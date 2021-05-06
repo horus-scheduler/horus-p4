@@ -13,6 +13,7 @@ typedef bit<8> queue_len_t;
 typedef bit<9> port_id_t;
 typedef bit<16> worker_id_t;
 typedef bit<16> switch_id_t;
+typedef bit<QUEUE_LEN_FIXED_POINT_SIZE> len_fixed_point_t;
 
 /*
  * Notes:
@@ -52,38 +53,51 @@ control LeafIngress(
             // Below are registers to hold state in middle of probing Idle list proceess. 
             // So we can compare them when second switch responds.
             Register<queue_len_t, _>(MAX_VCLUSTERS) spine_iq_len_1; // Length of Idle list for first probed spine (1 for each vcluster).
-            Register<switch_id_t, _>(MAX_VCLUSTERS) spine_probed_id; // ID of the first probed spine ((1 for each vcluster)
+            Register<switch_id_t, _>(MAX_VCLUSTERS) spine_probed_id; // ID of the first probed spine (1 for each vcluster)
 
             
-
-            
-
-            action get_idle_stat () {
+            action get_idle_array_base () {
                 falcon_md.cluster_worker_start_idx = (bit <16>) (hdr.falcon.cluster_id * MAX_WORKERS_PER_CLUSTER);
             }
-            action get_idle_stat_2 () {
+
+            action get_idle_index () {
                 falcon_md.cluster_worker_start_idx = falcon_md.cluster_worker_start_idx + (bit <16>) falcon_md.cluster_idle_count;
-                
             }
 
-            action drop() {
+            action _drop() {
                 ig_intr_dprsr_md.drop_ctl = 0x1; // Drop packet.
+            }
+
+
+            action act_set_queue_len_unit(len_fixed_point_t cluster_unit){
+                falcon_md.queue_len_unit = cluster_unit;
+            }
+            table set_queue_len_unit {
+                key = {
+                    hdr.falcon.local_cluster_id: exact;
+                }
+                actions = {
+                    act_set_queue_len_unit;
+                    _drop;
+                }
+                    size = HDR_CLUSTER_ID_SIZE;
+                    default_action = _drop;
             }
 
             apply {
                 if (hdr.falcon.isValid()) {  // Falcon packet
                     falcon_md.cluster_idle_count = read_idle_count.execute(hdr.falcon.cluster_id);
-                    get_idle_stat();
-                    get_idle_stat_2 ();
+                    get_idle_array_base();
+                    get_idle_index ();
                     falcon_md.cluster_worker_start_idx = falcon_md.cluster_worker_start_idx - 1;
                     falcon_md.linked_sq_id = read_linked_sq.execute(hdr.falcon.cluster_id);
 
                 }  else if (hdr.ipv4.isValid()) { // Regular switching procedure
                     // TODO: Not ported the ip matching tables for now, do we need them?
-                    get_idle_stat();
-                    drop();
+                    
+                    _drop();
                 } else {
-                    drop();
+                    _drop();
                 }
             }
         }
