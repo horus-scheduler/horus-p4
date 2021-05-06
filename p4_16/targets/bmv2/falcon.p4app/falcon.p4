@@ -1,5 +1,5 @@
 #include <core.p4>
-#include <v1model.p4>
+#include <tna.p4>
 
 #include "header.p4"
 #include "parser.p4"

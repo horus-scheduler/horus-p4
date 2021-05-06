@@ -6,6 +6,7 @@
 #include "common/util.p4"
 #include "headers.p4"
 
+#define FALCON_PORT 1234
 
 parser FalconIngressParser (
         packet_in pkt,
@@ -30,7 +31,22 @@ parser FalconIngressParser (
 
     state parse_ipv4 {
         pkt.extract(hdr.ipv4);
+        transition select (hdr.ipv4.protocol) {
+            IP_PROTOCOLS_UDP : parse_udp;
+            default : reject; 
+        }
+    }
+
+    state parse_udp {
+        pkt.extract(hdr.udp);
+        transition select (hdr.udp.dst_port) {
+            FALCON_PORT : parse_falcon;
+            default: accept;
+        }
+    }
+
+    state parse_falcon {
+        pkt.extract(hdr.falcon);
         transition accept;
     }
 }
-
