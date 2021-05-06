@@ -41,7 +41,19 @@ control LeafIngress(
                 }
             };
             Register<queue_len_t, _>(1024) queue_len_list; // List of queue lens for all vclusters
+            RegisterAction<bit<8>, _, bit<8>>(queue_len_list) decrement_queue_len = {
+                void apply(inout bit<8> value, out bit<8> rv) {
+                    value = value - falcon_md.queue_len_unit;
+                    rv = value;
+                }
+            };
             Register<queue_len_t, _>(MAX_VCLUSTERS) aggregate_queue_len_list; // One for each vcluster
+            RegisterAction<bit<8>, _, bit<8>>(aggregate_queue_len_list) decrement_aggregate_queue_len = {
+                void apply(inout bit<8> value, out bit<8> rv) {
+                    value = value - falcon_md.queue_len_unit;
+                    rv = value;
+                }
+            };
 
             Register<switch_id_t, _>(MAX_VCLUSTERS) linked_iq_sched; // Spine that ToR has sent last IdleSignal (1 for each vcluster).
             Register<switch_id_t, _>(MAX_VCLUSTERS) linked_sq_sched; // Spine that ToR has sent last QueueSignal (1 for each vcluster).
@@ -56,18 +68,21 @@ control LeafIngress(
             Register<switch_id_t, _>(MAX_VCLUSTERS) spine_probed_id; // ID of the first probed spine (1 for each vcluster)
 
             
-            action get_idle_array_base () {
+            action get_worker_start_idx () {
                 falcon_md.cluster_worker_start_idx = (bit <16>) (hdr.falcon.cluster_id * MAX_WORKERS_PER_CLUSTER);
             }
 
             action get_idle_index () {
-                falcon_md.cluster_worker_start_idx = falcon_md.cluster_worker_start_idx + (bit <16>) falcon_md.cluster_idle_count;
+                falcon_md.idle_worker_index = falcon_md.cluster_worker_start_idx + (bit <16>) falcon_md.cluster_idle_count;
+            }
+
+            action get_worker_index () {
+                falcon_md.worker_index = (bit<16>) hdr.falcon.src_id + falcon_md.cluster_worker_start_idx;
             }
 
             action _drop() {
                 ig_intr_dprsr_md.drop_ctl = 0x1; // Drop packet.
             }
-
 
             action act_set_queue_len_unit(len_fixed_point_t cluster_unit){
                 falcon_md.queue_len_unit = cluster_unit;
@@ -86,12 +101,18 @@ control LeafIngress(
 
             apply {
                 if (hdr.falcon.isValid()) {  // Falcon packet
-                    falcon_md.cluster_idle_count = read_idle_count.execute(hdr.falcon.cluster_id);
-                    get_idle_array_base();
-                    get_idle_index ();
-                    falcon_md.cluster_worker_start_idx = falcon_md.cluster_worker_start_idx - 1;
-                    falcon_md.linked_sq_id = read_linked_sq.execute(hdr.falcon.cluster_id);
+                    falcon_md.cluster_idle_count = read_idle_count.execute(hdr.falcon.cluster_id); // Get number of idles in rack
+                    get_worker_start_idx(); // Get start index of workers for this vcluster
+                    get_idle_index (); // Get the index of idle worker in idle list (pointes to next available index)
+                    falcon_md.linked_sq_id = read_linked_sq.execute(hdr.falcon.cluster_id); // Get ID of the Spine that the leaf reports to
+                    set_queue_len_unit.apply();
+                    if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE) {
+                        // TODO: Do this in server agent to save computation resource at switch (send adjust index as src_id)
+                        get_worker_index();
+                        decrement_queue_len.execute(falcon_md.worker_index);
+                        decrement_aggregate_queue_len.execute(hdr.falcon.cluster_id);
 
+                    }
                 }  else if (hdr.ipv4.isValid()) { // Regular switching procedure
                     // TODO: Not ported the ip matching tables for now, do we need them?
                     
