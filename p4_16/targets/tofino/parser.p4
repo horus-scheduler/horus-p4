@@ -11,13 +11,23 @@
 parser FalconIngressParser (
         packet_in pkt,
         out falcon_header_t hdr,
-        out falcon_metadata_t ig_md,
+        out falcon_metadata_t falcon_md,
         out ingress_intrinsic_metadata_t ig_intr_md) {
 
     TofinoIngressParser() tofino_parser;
 
     state start {
         tofino_parser.apply(pkt, ig_intr_md);
+        transition meta_init;
+    }
+
+    state meta_init {
+        falcon_md.linked_sq_id = 0;
+        falcon_md.queue_len_unit = 0;
+        falcon_md.cluster_idle_count = 0;   
+        falcon_md.idle_worker_index = 0;   
+        falcon_md.worker_index = 0;  
+        falcon_md.cluster_worker_start_idx=0;
         transition parse_ethernet;
     }
 

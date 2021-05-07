@@ -33,13 +33,27 @@ control LeafIngress(
             /* *** Register definitions *** */ 
             // TODO: Check Reg definition is _ correct?
             // idle list should be allocated to store MAX_VCLUSTER_RACK * MAX_IDLES_RACK
-            Register<worker_id_t, _>(1024) idle_list; 
-            Register<bit<16>, _>(MAX_VCLUSTERS) idle_count; // Stores idle count for each vcluster
-            RegisterAction<bit<16>, _, bit<16>>(idle_count) read_idle_count = {
+            Register<worker_id_t, _>(1024) idle_list;
+            RegisterAction<bit<16>, _, bit<16>>(idle_list) add_to_idle_list = {
                 void apply(inout bit<16> value, out bit<16> rv) {
+                    value = hdr.falcon.src_id;
                     rv = value;
                 }
             };
+            Register<bit<16>, _>(MAX_VCLUSTERS) idle_count; // Stores idle count for each vcluster
+            RegisterAction<bit<16>, _, bit<16>>(idle_count) read_and_inc_idle_count = { 
+                void apply(inout bit<16> value, out bit<16> rv) {
+                    rv = value; // Retruns val before modificaiton
+                    value = value + 1;
+                }
+            };
+            RegisterAction<bit<16>, _, bit<16>>(idle_count) read_and_dec_idle_count = { 
+                void apply(inout bit<16> value, out bit<16> rv) {
+                    rv = value; // Retruns val before modificaiton
+                    value = value - 1;
+                }
+            };
+            
             Register<queue_len_t, _>(1024) queue_len_list; // List of queue lens for all vclusters
             RegisterAction<bit<8>, _, bit<8>>(queue_len_list) decrement_queue_len = {
                 void apply(inout bit<8> value, out bit<8> rv) {
@@ -101,9 +115,7 @@ control LeafIngress(
 
             apply {
                 if (hdr.falcon.isValid()) {  // Falcon packet
-                    falcon_md.cluster_idle_count = read_idle_count.execute(hdr.falcon.cluster_id); // Get number of idles in rack
                     get_worker_start_idx(); // Get start index of workers for this vcluster
-                    get_idle_index (); // Get the index of idle worker in idle list (pointes to next available index)
                     falcon_md.linked_sq_id = read_linked_sq.execute(hdr.falcon.cluster_id); // Get ID of the Spine that the leaf reports to
                     set_queue_len_unit.apply();
                     if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE) {
@@ -111,7 +123,12 @@ control LeafIngress(
                         get_worker_index();
                         decrement_queue_len.execute(falcon_md.worker_index);
                         decrement_aggregate_queue_len.execute(hdr.falcon.cluster_id);
-
+                        if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE) {
+                            falcon_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.falcon.cluster_id); // Read last idle count for vcluster
+                            get_idle_index (); // Get the index of idle worker in idle list (pointes to next available index)
+                            add_to_idle_list.execute(falcon_md.idle_worker_index);
+                            
+                        }
                     }
                 }  else if (hdr.ipv4.isValid()) { // Regular switching procedure
                     // TODO: Not ported the ip matching tables for now, do we need them?
