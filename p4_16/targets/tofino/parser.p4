@@ -22,12 +22,15 @@ parser FalconIngressParser (
     }
 
     state meta_init {
-        falcon_md.linked_sq_id = 0;
+        falcon_md.linked_sq_id = 0xFF;
         falcon_md.queue_len_unit = 0;
         falcon_md.cluster_idle_count = 0;   
         falcon_md.idle_worker_index = 0;   
         falcon_md.worker_index = 0;  
         falcon_md.cluster_worker_start_idx=0;
+        falcon_md.rand_probe_group = 0;
+        falcon_md.egress_port = 0;
+        falcon_md.aggregate_queue_len = 0;
         transition parse_ethernet;
     }
 

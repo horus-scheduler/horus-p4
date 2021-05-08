@@ -23,7 +23,7 @@
 #define HDR_CLUSTER_ID_SIZE 16
 #define HDR_LOCAL_CLUSTER_ID_SIZE 8
 #define HDR_SRC_ID_SIZE 16
-#define HDR_QUEUE_LEN_SIZE 9
+#define HDR_QUEUE_LEN_SIZE 8
 #define HDR_SEQ_NUM_SIZE 16
 #define HDR_FALCON_RAND_GROUP_SIZE 8
 #define HDR_FALCON_DST_SIZE 8
@@ -62,6 +62,9 @@ struct falcon_metadata_t {
     bit<16> idle_worker_index;
     bit<16> worker_index;
     bit<16> cluster_worker_start_idx;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> aggregate_queue_len;
+    PortId_t egress_port;
+    MulticastGroupId_t rand_probe_group;
 }
 
 
