@@ -31,6 +31,8 @@ parser FalconIngressParser (
         falcon_md.rand_probe_group = 0;
         falcon_md.egress_port = 0;
         falcon_md.aggregate_queue_len = 0;
+        falcon_md.random_downstream_id_1 = 0;
+        falcon_md.random_downstream_id_2 = 0;
         transition parse_ethernet;
     }
 
