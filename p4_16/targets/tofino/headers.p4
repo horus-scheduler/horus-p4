@@ -68,13 +68,20 @@ struct falcon_metadata_t {
     bit<16> cluster_num_valid_ds;
     bit<16> random_downstream_id_1;
     bit<16> random_downstream_id_2;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_1;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_2;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_3;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_4;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_5;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_6;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_7;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_8;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> random_worker_qlen_1;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> random_worker_qlen_2;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> selected_worker_qlen;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> not_selected_worker_qlen;
     bit<1> valid_list_random_worker_1;
     bit<1> valid_list_random_worker_2;
-    
 }
 
 

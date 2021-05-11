@@ -44,6 +44,12 @@ header empty_t {
  *
  *   Only one RegisterAction may be executed per packet for a given Register. This is a significant limitation for our algorithm.
  *   Switch can not read n random registers and then increment the selected worker's register after comparison. We need to rely on worker to update the qlen later. 
+ *   
+ *   Comparing two metadeta feilds (with < >) in apply{} blcok resulted in error. (Too complex). Only can use == on two meta feilds!
+ *  
+ *   The action get_valid_list_s1_w1 uses Register LeafIngress.list_valid_1 but does not use Register LeafIngress.list_valid_2.
+ *   The action get_valid_list_s1_w2 uses Register LeafIngress.list_valid_2 but does not use Register LeafIngress.list_valid_1.
+ *   The Tofino architecture requires all indirect externs to be addressed with the same expression across all actions they are used in.
 */
 
 control LeafIngress(
@@ -87,70 +93,117 @@ control LeafIngress(
                 }
             };
             
-            Register<bit<1>, _>(1024) queue_len_list_valid; // Indicates which queue_len_list array is valid and should be used
-            RegisterAction<bit<1>, _, bit<1>>(queue_len_list_valid) get_list_validity = {
-                void apply(inout bit<1> value, out bit<1> rv) {
-                    rv = value;
-                    value = 0;
+            Register<bit<8>, _>(MAX_VCLUSTERS) list_valid_1; // Indicates which queue_len_list array is valid and should be used
+            RegisterAction<bit<8>, _, bit<1>>(list_valid_1) toggle_list_validity_1 = {
+                void apply(inout bit<8> value, out bit<1> rv) {
+                    if(value==1){
+                        value = 0;
+                        rv = 1;
+                    } else {
+                        value = 1;
+                        rv=0;
+                    }
                 }
             };
-            RegisterAction<bit<1>, _, bit<1>>(queue_len_list_valid) reset_list_validity = { // Set validity to 0 (when we get DONE from worker always write on first list) 
-                void apply(inout bit<1> value, out bit<1> rv) {
-                    value = 0;
+            RegisterAction<bit<8>, _, bit<1>>(list_valid_1) get_list_validity_1 = {
+                void apply(inout bit<8> value, out bit<1> rv) {
+                    rv = (bit<1>)value;
+                    
+                }
+            };
+            
+            
+            // List of queue lens for all vclusters
+            Register<queue_len_t, _>(MAX_VCLUSTERS) queue_len_list_1_0; 
+            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_1_0) write_queue_len_list_1_0 = {
+                void apply(inout bit<8> value, out bit<8> rv) {
+                    value = falcon_md.worker_qlen_1;
+                    rv = value;
+                }
+            };
+            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_1_0) inc_queue_len_list_1_0 = {
+                void apply(inout bit<8> value, out bit<8> rv) {
+                    value = value + falcon_md.queue_len_unit;
+                    rv = value;
+                }
+            };
+            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_1_0) read_queue_len_list_1_0 = {
+                void apply(inout bit<8> value, out bit<8> rv) {
+                    rv = value;
                 }
             };
 
-            Register<queue_len_t, _>(1024) queue_len_list_1; // List of queue lens for all vclusters
-            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_1) write_queue_len_list_1 = {
+            Register<queue_len_t, _>(MAX_VCLUSTERS) queue_len_list_1_1; 
+            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_1_1) write_queue_len_list_1_1 = {
                 void apply(inout bit<8> value, out bit<8> rv) {
-                    value = falcon_md.not_selected_worker_qlen;
+                    value = falcon_md.worker_qlen_1;
                     rv = value;
                 }
             };
-            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_1) update_queue_len_list_1 = {
+            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_1_1) inc_queue_len_list_1_1 = {
                 void apply(inout bit<8> value, out bit<8> rv) {
-                    value = falcon_md.selected_worker_qlen + falcon_md.queue_len_unit;
+                    value = value + falcon_md.queue_len_unit;
                     rv = value;
                 }
             };
-            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_1) read_queue_len_list_1 = {
+            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_1_1) read_queue_len_list_1_1 = {
                 void apply(inout bit<8> value, out bit<8> rv) {
                     rv = value;
                 }
             };
-
-            Register<queue_len_t, _>(1024) queue_len_list_2; // List of queue lens for all vclusters
-            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_2) write_queue_len_list_2 = {
+            
+            Register<queue_len_t, _>(MAX_VCLUSTERS) queue_len_list_2_0; 
+            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_2_0) write_queue_len_list_2_0 = {
                 void apply(inout bit<8> value, out bit<8> rv) {
-                    value = falcon_md.not_selected_worker_qlen;
+                    value = falcon_md.worker_qlen_2;
                     rv = value;
                 }
             };
-            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_2) update_queue_len_list_2 = {
+            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_2_0) inc_queue_len_list_2_0 = {
                 void apply(inout bit<8> value, out bit<8> rv) {
-                    value = falcon_md.selected_worker_qlen + falcon_md.queue_len_unit;
+                    value = value + falcon_md.queue_len_unit;
                     rv = value;
                 }
             };
-            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_2) read_queue_len_list_2 = {
+            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_2_0) read_queue_len_list_2_0 = {
+                void apply(inout bit<8> value, out bit<8> rv) {
+                    rv = value;
+                }
+            };
+            
+            Register<queue_len_t, _>(MAX_VCLUSTERS) queue_len_list_2_1; 
+            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_2_1) write_queue_len_list_2_1 = {
+                void apply(inout bit<8> value, out bit<8> rv) {
+                    value = falcon_md.worker_qlen_2;
+                    rv = value;
+                }
+            };
+            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_2_1) inc_queue_len_list_2_1 = {
+                void apply(inout bit<8> value, out bit<8> rv) {
+                    value = value + falcon_md.queue_len_unit;
+                    rv = value;
+                }
+            };
+            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_2_1) read_queue_len_list_2_1 = {
                 void apply(inout bit<8> value, out bit<8> rv) {
                     rv = value;
                 }
             };
 
             Register<queue_len_t, _>(MAX_VCLUSTERS) aggregate_queue_len_list; // One for each vcluster
-            RegisterAction<bit<8>, _, bit<8>>(aggregate_queue_len_list) decrement_aggregate_queue_len = {
+            RegisterAction<bit<8>, _, bit<8>>(aggregate_queue_len_list) dec_aggregate_queue_len = {
                 void apply(inout bit<8> value, out bit<8> rv) {
                     value = value - falcon_md.queue_len_unit;
                     rv = value;
                 }
             };
-            RegisterAction<bit<8>, _, bit<8>>(aggregate_queue_len_list) increment_aggregate_queue_len = {
+            RegisterAction<bit<8>, _, bit<8>>(aggregate_queue_len_list) inc_aggregate_queue_len = {
                 void apply(inout bit<8> value, out bit<8> rv) {
                     value = value + falcon_md.queue_len_unit;
                     rv = value;
                 }
             };
+
             Register<switch_id_t, _>(MAX_VCLUSTERS) linked_iq_sched; // Spine that ToR has sent last IdleSignal (1 for each vcluster).
             Register<switch_id_t, _>(MAX_VCLUSTERS) linked_sq_sched; // Spine that ToR has sent last QueueSignal (1 for each vcluster).
             RegisterAction<bit<16>, _, bit<16>>(linked_sq_sched) read_linked_sq  = {
@@ -171,10 +224,10 @@ control LeafIngress(
               TODO: Multiple .get() calls result in different ranodm numbers? Or should we make another Random extern for that purpose?
             */
             Random<bit<16>>() random_worker_id_16;
-            Random<bit<8>>() random_worker_id_8;
-            Random<bit<4>>() random_worker_id_4;
-            Random<bit<2>>() random_worker_id_2;
-            Random<bit<1>>() random_worker_id_1;
+            // Random<bit<8>>() random_worker_id_8;
+            // Random<bit<4>>() random_worker_id_4;
+            // Random<bit<2>>() random_worker_id_2;
+            // Random<bit<1>>() random_worker_id_1;
 
             action get_worker_start_idx () {
                 falcon_md.cluster_worker_start_idx = (bit <16>) (hdr.falcon.cluster_id * MAX_WORKERS_PER_CLUSTER);
@@ -254,6 +307,7 @@ control LeafIngress(
                 size = HDR_CLUSTER_ID_SIZE;
                 default_action = NoAction;
             }
+            
 
             action gen_random_worker_id_16() {
                 falcon_md.random_downstream_id_1 = (bit<16>) random_worker_id_16.get();
@@ -279,26 +333,72 @@ control LeafIngress(
                 falcon_md.random_downstream_id_1 = falcon_md.random_downstream_id_1 >> 15;
                 falcon_md.random_downstream_id_2 = falcon_md.random_downstream_id_2 >> 15;
             }
-
-            action get_valid_list_index_1() {
-                falcon_md.valid_list_random_worker_1 = get_list_validity.execute(falcon_md.random_downstream_id_1);
-            }
-            action get_valid_list_index_2(){
-                falcon_md.valid_list_random_worker_2 = get_list_validity.execute(falcon_md.random_downstream_id_2);
-            }
-            action get_random_worker_qlen_1_1() { // Read first qlen from list
-                falcon_md.random_worker_qlen_1 = read_queue_len_list_1.execute(falcon_md.random_downstream_id_1);
-            }
-            action get_random_worker_qlen_1_2() { // Read first qlen from list instance 2
-                falcon_md.random_worker_qlen_1 = read_queue_len_list_2.execute(falcon_md.random_downstream_id_1);
-            }
-            action get_random_worker_qlen_2_1() { // Read second qlen from list instance 1
-                falcon_md.random_worker_qlen_2 = read_queue_len_list_1.execute(falcon_md.random_downstream_id_2);
-            }
-            action get_random_worker_qlen_2_2() { // Read second qlen from list instance 2
-                falcon_md.random_worker_qlen_2 = read_queue_len_list_2.execute(falcon_md.random_downstream_id_2);
+            
+            action compare_queue_len() {
+                falcon_md.selected_worker_qlen = min(falcon_md.random_worker_qlen_1, falcon_md.random_worker_qlen_2);
             }
 
+            action act_random1_qlen1() {
+                falcon_md.random_worker_qlen_1 = falcon_md.worker_qlen_1;
+            }
+            action act_random1_qlen2() {
+                falcon_md.random_worker_qlen_1 = falcon_md.worker_qlen_2;
+            }
+            table assign_qlen_random1 {
+                key = {
+                    falcon_md.random_downstream_id_1 : exact;
+                }
+                actions = {
+                    act_random1_qlen1;
+                    act_random1_qlen2;
+                    NoAction;
+                }
+                size = 16;
+                default_action = NoAction;
+            }
+            action act_random2_qlen1() {
+                falcon_md.random_worker_qlen_2 = falcon_md.worker_qlen_1;
+            }
+            action act_random2_qlen2() {
+                falcon_md.random_worker_qlen_2 = falcon_md.worker_qlen_2;
+            }
+            table assign_qlen_random2 {
+                key = {
+                    falcon_md.random_downstream_id_2 : exact;
+                }
+                actions = {
+                    act_random2_qlen1;
+                    act_random2_qlen2;
+                    NoAction;
+                }
+                size = 16;
+                default_action = NoAction;
+            }
+            
+            action read_worker_1_0 () {
+                falcon_md.worker_qlen_1 = read_queue_len_list_1_0.execute(hdr.falcon.cluster_id);
+            }
+            action read_worker_1_1 () {
+                falcon_md.worker_qlen_1 = read_queue_len_list_1_1.execute(hdr.falcon.cluster_id);
+            }
+            action read_worker_2_0 () {
+                falcon_md.worker_qlen_2 = read_queue_len_list_1_0.execute(hdr.falcon.cluster_id);
+            }
+            action read_worker_2_1 () {
+                falcon_md.worker_qlen_2 = read_queue_len_list_2_1.execute(hdr.falcon.cluster_id);
+            }
+            action write_worker_1_0() {
+                write_queue_len_list_1_0.execute(hdr.falcon.cluster_id);
+            }
+            action write_worker_1_1() {
+                write_queue_len_list_1_1.execute(hdr.falcon.cluster_id);
+            }
+            action write_worker_2_0() {
+                write_queue_len_list_2_0.execute(hdr.falcon.cluster_id);
+            }
+            action write_worker_2_1() {
+                write_queue_len_list_2_1.execute(hdr.falcon.cluster_id);
+            }
             apply {
                 if (hdr.falcon.isValid()) {  // Falcon packet
                     get_worker_start_idx(); // Get start index of workers for this vcluster
@@ -308,9 +408,23 @@ control LeafIngress(
                         // TODO: Do this in server agent to save computation resource at switch (send adjust index as src_id)
                         get_worker_index();
                         falcon_md.selected_worker_qlen = hdr.falcon.qlen;
-                        write_queue_len_list_1.execute(falcon_md.worker_index);
-                        reset_list_validity.execute(falcon_md.worker_index);
-                        falcon_md.aggregate_queue_len = decrement_aggregate_queue_len.execute(hdr.falcon.cluster_id);
+                        bit <1> valid_list;
+                        valid_list = get_list_validity_1.execute(hdr.falcon.cluster_id);
+                        if (hdr.falcon.src_id == 1) {
+                            if (valid_list==0){
+                                    write_queue_len_list_1_0.execute(hdr.falcon.cluster_id);
+                            } else {
+                                write_queue_len_list_1_1.execute(hdr.falcon.cluster_id);
+                            }
+                        } else if (hdr.falcon.src_id == 2) {
+                            if (valid_list==0){
+                                    write_queue_len_list_2_0.execute(hdr.falcon.cluster_id);
+                            } else {
+                                    write_queue_len_list_2_1.execute(hdr.falcon.cluster_id);
+                            }
+                        }
+
+                        falcon_md.aggregate_queue_len = dec_aggregate_queue_len.execute(hdr.falcon.cluster_id);
                         if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE) {
                             falcon_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.falcon.cluster_id); // Read last idle count for vcluster
                             get_idle_index (); // Get the index of idle worker in idle list (pointes to next available index)
@@ -336,10 +450,11 @@ control LeafIngress(
                             hdr.falcon.pkt_type = PKT_TYPE_QUEUE_SIGNAL;
                             hdr.falcon.qlen = falcon_md.aggregate_queue_len;
                             hdr.falcon.dst_id = falcon_md.linked_sq_id;
-                            forward_falcon_switch_dst.apply();
                         }
+                        forward_falcon_switch_dst.apply();
                     } else if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
                         falcon_md.cluster_idle_count = read_and_dec_idle_count.execute(hdr.falcon.cluster_id); // Read last idle count for vcluster
+                        inc_aggregate_queue_len.execute(hdr.falcon.cluster_id);
                         if (falcon_md.cluster_idle_count > 0) {
                             get_idle_index();
                             get_curr_idle_index(); // Decrements the idle index so we read the correct index
@@ -356,53 +471,48 @@ control LeafIngress(
                             } else if (falcon_md.cluster_num_valid_ds == 1) {
                                 gen_random_worker_id_1();
                             }
-                            // TODO: Does it cause error when random worker_1 and worker_2 have same index? 
-                            get_valid_list_index_1();
-                            get_valid_list_index_2();
                             
-                            if (falcon_md.valid_list_random_worker_1 == 0) {
-                                get_random_worker_qlen_1_1();
+                            bit <1> valid_list_for_worker_1;
+                            valid_list_for_worker_1 = toggle_list_validity_1.execute(hdr.falcon.cluster_id);
+                            if (valid_list_for_worker_1 == 0) {
+                                    read_worker_1_0();
+                                    read_worker_2_0();
+                                    assign_qlen_random1.apply();
+                                    assign_qlen_random2.apply();
+                                    compare_queue_len();
+                                    if(falcon_md.selected_worker_qlen == falcon_md.random_worker_qlen_1) {
+                                        hdr.falcon.dst_id = falcon_md.random_downstream_id_1;
+                                    } else {
+                                        hdr.falcon.dst_id = falcon_md.random_downstream_id_2;
+                                    }
+                                    if(hdr.falcon.dst_id==1){
+                                        falcon_md.worker_qlen_1 = falcon_md.worker_qlen_1 + falcon_md.queue_len_unit;
+                                    } else if(hdr.falcon.dst_id==2) {
+                                        falcon_md.worker_qlen2 = falcon_md.worker_qlen_2 + falcon_md.queue_len_unit;
+                                    }
+                                    write_worker_1_1();
+                                    write_worker_2_1();
                             } else {
-                                get_random_worker_qlen_1_2();
+                                    read_worker_1_1();
+                                    read_worker_2_1();
+                                    assign_qlen_random1.apply();
+                                    assign_qlen_random2.apply();
+                                    compare_queue_len();
+                                    if(falcon_md.selected_worker_qlen == falcon_md.random_worker_qlen_1) {
+                                        hdr.falcon.dst_id = falcon_md.random_downstream_id_1;
+                                    } else {
+                                        hdr.falcon.dst_id = falcon_md.random_downstream_id_2;
+                                    }
+                                    if(hdr.falcon.dst_id==1){
+                                        falcon_md.worker_qlen_1 = falcon_md.worker_qlen_1 + falcon_md.queue_len_unit;
+                                    } else if(hdr.falcon.dst_id==2) {
+                                        falcon_md.worker_qlen2 = falcon_md.worker_qlen_2 + falcon_md.queue_len_unit;
+                                    }
+                                    write_worker_1_0();
+                                    write_worker_2_0();
                             }
                             
-                            if (falcon_md.valid_list_random_worker_2 == 0) {
-                                get_random_worker_qlen_2_1();
-                            } else {
-                                get_random_worker_qlen_2_2();
-                            }
-                        
-                            // if(falcon_md.random_worker_qlen_1 <= falcon_md.random_worker_qlen_2) { // select worker with ID "random_downstream_id_1" 
-                            //     falcon_md.selected_worker_qlen = falcon_md.random_worker_qlen_1;
-                            //     falcon_md.not_selected_worker_qlen = falcon_md.random_worker_qlen_2;
-                            //     if (falcon_md.valid_list_random_worker_1 == 0) { // list 1 was valid so when updating, write to second list
-                            //         update_queue_len_list_2.execute(falcon_md.random_downstream_id_1);
-                            //     } else {
-                            //         update_queue_len_list_1.execute(falcon_md.random_downstream_id_1);
-                            //     }
-                            //     if (falcon_md.valid_list_random_worker_2 == 0) { // list 1 was valid (was toggled) now write the exisiting value to second list
-                            //         write_queue_len_list_2.execute(falcon_md.random_downstream_id_2);
-                            //     } else {
-                            //         write_queue_len_list_1.execute(falcon_md.random_downstream_id_2);
-                            //     }
-
-                            //     hdr.falcon.dst_id = falcon_md.random_downstream_id_1;
-
-                            // } else { // Select the second worker with ID "random_downstream_id_2" 
-                            //     falcon_md.selected_worker_qlen = falcon_md.random_worker_qlen_2;
-                            //     falcon_md.not_selected_worker_qlen = falcon_md.random_worker_qlen_1;
-                            //     if (falcon_md.valid_list_random_worker_2 == 0) { // list 1 was valid so when updating, write to second list
-                            //         update_queue_len_list_2.execute(falcon_md.random_downstream_id_2);
-                            //     } else { 
-                            //         update_queue_len_list_1.execute(falcon_md.random_downstream_id_2);
-                            //     }
-                            //     if (falcon_md.valid_list_random_worker_1 == 0) { // list 1 was valid so when updating, write to second list
-                            //         write_queue_len_list_2.execute(falcon_md.random_downstream_id_1);
-                            //     } else { 
-                            //         write_queue_len_list_1.execute(falcon_md.random_downstream_id_1);
-                            //     }
-                            //     hdr.falcon.dst_id = falcon_md.random_downstream_id_1;
-                            // }
+                            
                         }
                     }
                 }  else if (hdr.ipv4.isValid()) { // Regular switching procedure
