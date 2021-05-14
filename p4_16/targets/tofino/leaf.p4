@@ -17,6 +17,7 @@
 #define MIRROR_TYPE_WORKER_RESPONSE 1
 
 typedef bit<8> queue_len_t;
+typedef bit<32> multi_queue_len_t;
 typedef bit<9> port_id_t;
 typedef bit<16> worker_id_t;
 typedef bit<16> switch_id_t;
@@ -105,87 +106,73 @@ control LeafIngress(
                     }
                 }
             };
-            RegisterAction<bit<8>, _, bit<1>>(list_valid_1) get_list_validity_1 = {
+            RegisterAction<bit<8>, _, bit<1>>(list_valid_1) reset_list_validity_1 = {
                 void apply(inout bit<8> value, out bit<1> rv) {
-                    rv = (bit<1>)value;
-                    
+                    rv = 0;
                 }
             };
-            
             
             // List of queue lens for all vclusters
-            Register<queue_len_t, _>(MAX_VCLUSTERS) queue_len_list_1_0; 
-            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_1_0) write_queue_len_list_1_0 = {
-                void apply(inout bit<8> value, out bit<8> rv) {
-                    value = falcon_md.worker_qlen_1;
+            Register<multi_queue_len_t, _>(MAX_VCLUSTERS) queue_len_lo_0; 
+            RegisterAction<multi_queue_len_t, _, multi_queue_len_t>(queue_len_lo_0) write_queue_len_lo_0 = {
+                void apply(inout multi_queue_len_t value, out multi_queue_len_t rv) {
+                    value = falcon_md.write_qlen_lo;
                     rv = value;
                 }
             };
-            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_1_0) inc_queue_len_list_1_0 = {
-                void apply(inout bit<8> value, out bit<8> rv) {
-                    value = value + falcon_md.queue_len_unit;
-                    rv = value;
-                }
-            };
-            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_1_0) read_queue_len_list_1_0 = {
-                void apply(inout bit<8> value, out bit<8> rv) {
+            RegisterAction<multi_queue_len_t, _, multi_queue_len_t>(queue_len_lo_0) read_queue_len_lo_0 = {
+                void apply(inout multi_queue_len_t value, out multi_queue_len_t rv) {
                     rv = value;
                 }
             };
 
-            Register<queue_len_t, _>(MAX_VCLUSTERS) queue_len_list_1_1; 
-            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_1_1) write_queue_len_list_1_1 = {
-                void apply(inout bit<8> value, out bit<8> rv) {
-                    value = falcon_md.worker_qlen_1;
+            Register<multi_queue_len_t, _>(MAX_VCLUSTERS) queue_len_lo_1; 
+            RegisterAction<multi_queue_len_t, _, multi_queue_len_t>(queue_len_lo_1) write_queue_len_lo_1 = {
+                void apply(inout multi_queue_len_t value, out multi_queue_len_t rv) {
+                    value = falcon_md.write_qlen_lo;
                     rv = value;
                 }
             };
-            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_1_1) inc_queue_len_list_1_1 = {
-                void apply(inout bit<8> value, out bit<8> rv) {
-                    value = value + falcon_md.queue_len_unit;
-                    rv = value;
-                }
-            };
-            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_1_1) read_queue_len_list_1_1 = {
-                void apply(inout bit<8> value, out bit<8> rv) {
+            RegisterAction<multi_queue_len_t, _, multi_queue_len_t>(queue_len_lo_1) read_queue_len_lo_1 = {
+                void apply(inout multi_queue_len_t value, out multi_queue_len_t rv) {
                     rv = value;
                 }
             };
             
-            Register<queue_len_t, _>(MAX_VCLUSTERS) queue_len_list_2_0; 
-            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_2_0) write_queue_len_list_2_0 = {
-                void apply(inout bit<8> value, out bit<8> rv) {
-                    value = falcon_md.worker_qlen_2;
+            Register<multi_queue_len_t, _>(MAX_VCLUSTERS) queue_len_hi_0; 
+            RegisterAction<multi_queue_len_t, _, multi_queue_len_t>(queue_len_hi_0) write_queue_len_hi_0 = {
+                void apply(inout multi_queue_len_t value, out multi_queue_len_t rv) {
+                    value = falcon_md.write_qlen_hi;
                     rv = value;
                 }
             };
-            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_2_0) inc_queue_len_list_2_0 = {
-                void apply(inout bit<8> value, out bit<8> rv) {
-                    value = value + falcon_md.queue_len_unit;
+            RegisterAction<multi_queue_len_t, _, multi_queue_len_t>(queue_len_hi_0) inc_queue_len_hi_0 = {
+                void apply(inout multi_queue_len_t value, out multi_queue_len_t rv) {
+                    value = value + 1;
                     rv = value;
                 }
             };
-            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_2_0) read_queue_len_list_2_0 = {
-                void apply(inout bit<8> value, out bit<8> rv) {
+            RegisterAction<multi_queue_len_t, _, multi_queue_len_t>(queue_len_hi_0) read_queue_len_hi_0 = {
+                void apply(inout multi_queue_len_t value, out multi_queue_len_t rv) {
                     rv = value;
                 }
             };
             
-            Register<queue_len_t, _>(MAX_VCLUSTERS) queue_len_list_2_1; 
-            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_2_1) write_queue_len_list_2_1 = {
-                void apply(inout bit<8> value, out bit<8> rv) {
-                    value = falcon_md.worker_qlen_2;
+            Register<multi_queue_len_t, _>(MAX_VCLUSTERS) queue_len_hi_1; 
+            RegisterAction<multi_queue_len_t, _, multi_queue_len_t>(queue_len_hi_1) write_queue_len_hi_1 = {
+                void apply(inout multi_queue_len_t value, out multi_queue_len_t rv) {
+                    value = falcon_md.write_qlen_hi;
                     rv = value;
                 }
             };
-            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_2_1) inc_queue_len_list_2_1 = {
-                void apply(inout bit<8> value, out bit<8> rv) {
-                    value = value + falcon_md.queue_len_unit;
+            RegisterAction<multi_queue_len_t, _, multi_queue_len_t>(queue_len_hi_1) inc_queue_len_hi_1 = {
+                void apply(inout multi_queue_len_t value, out multi_queue_len_t rv) {
+                    value = value + 1;
                     rv = value;
                 }
             };
-            RegisterAction<bit<8>, _, bit<8>>(queue_len_list_2_1) read_queue_len_list_2_1 = {
-                void apply(inout bit<8> value, out bit<8> rv) {
+            RegisterAction<multi_queue_len_t, _, multi_queue_len_t>(queue_len_hi_1) read_queue_len_hi_1 = {
+                void apply(inout multi_queue_len_t value, out multi_queue_len_t rv) {
                     rv = value;
                 }
             };
@@ -339,10 +326,28 @@ control LeafIngress(
             }
 
             action act_random1_qlen1() {
-                falcon_md.random_worker_qlen_1 = falcon_md.worker_qlen_1;
+                falcon_md.random_worker_qlen_1 = falcon_md.worker_qlen_lo[7:0];
             }
             action act_random1_qlen2() {
-                falcon_md.random_worker_qlen_1 = falcon_md.worker_qlen_2;
+                falcon_md.random_worker_qlen_1 = falcon_md.worker_qlen_lo[15:8];
+            }
+            action act_random1_qlen3() {
+                falcon_md.random_worker_qlen_1 = falcon_md.worker_qlen_lo[23:16];
+            }
+            action act_random1_qlen4() {
+                falcon_md.random_worker_qlen_1 = falcon_md.worker_qlen_lo[31:24];
+            }
+            action act_random1_qlen5() {
+                falcon_md.random_worker_qlen_1 = falcon_md.worker_qlen_hi[7:0];
+            }
+            action act_random1_qlen6() {
+                falcon_md.random_worker_qlen_1 = falcon_md.worker_qlen_hi[15:8];
+            }
+            action act_random1_qlen7() {
+                falcon_md.random_worker_qlen_1 = falcon_md.worker_qlen_hi[23:16];
+            }
+            action act_random1_qlen8() {
+                falcon_md.random_worker_qlen_1 = falcon_md.worker_qlen_hi[31:24];
             }
             table assign_qlen_random1 {
                 key = {
@@ -356,11 +361,43 @@ control LeafIngress(
                 size = 16;
                 default_action = NoAction;
             }
+
+            table assign_qlen_random1_copy {
+                key = {
+                    falcon_md.random_downstream_id_1 : exact;
+                }
+                actions = {
+                    act_random1_qlen1;
+                    act_random1_qlen2;
+                    NoAction;
+                }
+                size = 16;
+                default_action = NoAction;
+            }
+
             action act_random2_qlen1() {
-                falcon_md.random_worker_qlen_2 = falcon_md.worker_qlen_1;
+                falcon_md.random_worker_qlen_2 = falcon_md.worker_qlen_lo[7:0];
             }
             action act_random2_qlen2() {
-                falcon_md.random_worker_qlen_2 = falcon_md.worker_qlen_2;
+                falcon_md.random_worker_qlen_2 = falcon_md.worker_qlen_lo[15:8];
+            }
+            action act_random2_qlen3() {
+                falcon_md.random_worker_qlen_2 = falcon_md.worker_qlen_lo[23:16];
+            }
+            action act_random2_qlen4() {
+                falcon_md.random_worker_qlen_2 = falcon_md.worker_qlen_lo[31:24];
+            }
+            action act_random2_qlen5() {
+                falcon_md.random_worker_qlen_2 = falcon_md.worker_qlen_hi[7:0];
+            }
+            action act_random2_qlen6() {
+                falcon_md.random_worker_qlen_2 = falcon_md.worker_qlen_hi[15:8];
+            }
+            action act_random2_qlen7() {
+                falcon_md.random_worker_qlen_2 = falcon_md.worker_qlen_hi[23:16];
+            }
+            action act_random2_qlen8() {
+                falcon_md.random_worker_qlen_2 = falcon_md.worker_qlen_hi[31:24];
             }
             table assign_qlen_random2 {
                 key = {
@@ -374,30 +411,57 @@ control LeafIngress(
                 size = 16;
                 default_action = NoAction;
             }
+
+            action act_inc_1_qlen1() {
+                falcon_md.write_qlen_lo = falcon_md.worker_qlen_lo + (32w1);
+            }
+            action act_inc_1_qlen2() {
+                falcon_md.write_qlen_lo = falcon_md.worker_qlen_lo + (32w256);
+            }
+            action act_inc_1_qlen3() {
+                falcon_md.write_qlen_lo = falcon_md.worker_qlen_lo + (32w65536);
+            }
+            action act_inc_1_qlen4() {
+                falcon_md.write_qlen_lo = falcon_md.worker_qlen_lo + (32w16777216);
+            }
+            table inc_selected_qlen {
+                key = {
+                    hdr.falcon.dst_id : exact;
+                }
+                actions = {
+                    act_inc_1_qlen1;
+                    act_inc_1_qlen2;
+                    act_inc_1_qlen3;
+                    act_inc_1_qlen4;
+                    NoAction;
+                }
+                size = 16;
+                default_action = NoAction;
+            }
             
-            action read_worker_1_0 () {
-                falcon_md.worker_qlen_1 = read_queue_len_list_1_0.execute(hdr.falcon.cluster_id);
+            action read_worker_lo_0 () {
+                falcon_md.worker_qlen_lo = read_queue_len_lo_0.execute(hdr.falcon.cluster_id);
             }
-            action read_worker_1_1 () {
-                falcon_md.worker_qlen_1 = read_queue_len_list_1_1.execute(hdr.falcon.cluster_id);
+            action read_worker_lo_1 () {
+                falcon_md.worker_qlen_lo = read_queue_len_lo_1.execute(hdr.falcon.cluster_id);
             }
-            action read_worker_2_0 () {
-                falcon_md.worker_qlen_2 = read_queue_len_list_1_0.execute(hdr.falcon.cluster_id);
+            action read_worker_hi_0 () {
+                falcon_md.worker_qlen_hi = read_queue_len_hi_0.execute(hdr.falcon.cluster_id);
             }
-            action read_worker_2_1 () {
-                falcon_md.worker_qlen_2 = read_queue_len_list_2_1.execute(hdr.falcon.cluster_id);
+            action read_worker_hi_1 () {
+                falcon_md.worker_qlen_hi = read_queue_len_hi_1.execute(hdr.falcon.cluster_id);
             }
-            action write_worker_1_0() {
-                write_queue_len_list_1_0.execute(hdr.falcon.cluster_id);
+            action write_worker_lo_0() {
+                write_queue_len_lo_0.execute(hdr.falcon.cluster_id);
             }
-            action write_worker_1_1() {
-                write_queue_len_list_1_1.execute(hdr.falcon.cluster_id);
+            action write_worker_lo_1() {
+                write_queue_len_lo_1.execute(hdr.falcon.cluster_id);
             }
-            action write_worker_2_0() {
-                write_queue_len_list_2_0.execute(hdr.falcon.cluster_id);
+            action write_worker_hi_0() {
+                write_queue_len_hi_0.execute(hdr.falcon.cluster_id);
             }
-            action write_worker_2_1() {
-                write_queue_len_list_2_1.execute(hdr.falcon.cluster_id);
+            action write_worker_hi_1() {
+                write_queue_len_hi_1.execute(hdr.falcon.cluster_id);
             }
             apply {
                 if (hdr.falcon.isValid()) {  // Falcon packet
@@ -407,21 +471,14 @@ control LeafIngress(
                     if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE) {
                         // TODO: Do this in server agent to save computation resource at switch (send adjust index as src_id)
                         get_worker_index();
-                        falcon_md.selected_worker_qlen = hdr.falcon.qlen;
-                        bit <1> valid_list;
-                        valid_list = get_list_validity_1.execute(hdr.falcon.cluster_id);
-                        if (hdr.falcon.src_id == 1) {
-                            if (valid_list==0){
-                                    write_queue_len_list_1_0.execute(hdr.falcon.cluster_id);
-                            } else {
-                                write_queue_len_list_1_1.execute(hdr.falcon.cluster_id);
-                            }
-                        } else if (hdr.falcon.src_id == 2) {
-                            if (valid_list==0){
-                                    write_queue_len_list_2_0.execute(hdr.falcon.cluster_id);
-                            } else {
-                                    write_queue_len_list_2_1.execute(hdr.falcon.cluster_id);
-                            }
+                        @stage(4) {
+                            reset_list_validity_1.execute(hdr.falcon.cluster_id);
+                        }
+                        @stage(5){
+                            write_worker_lo_1();
+                        }
+                        @stage(6){
+                            write_worker_hi_1();
                         }
 
                         falcon_md.aggregate_queue_len = dec_aggregate_queue_len.execute(hdr.falcon.cluster_id);
@@ -451,7 +508,7 @@ control LeafIngress(
                             hdr.falcon.qlen = falcon_md.aggregate_queue_len;
                             hdr.falcon.dst_id = falcon_md.linked_sq_id;
                         }
-                        forward_falcon_switch_dst.apply();
+                        
                     } else if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
                         falcon_md.cluster_idle_count = read_and_dec_idle_count.execute(hdr.falcon.cluster_id); // Read last idle count for vcluster
                         inc_aggregate_queue_len.execute(hdr.falcon.cluster_id);
@@ -473,10 +530,13 @@ control LeafIngress(
                             }
                             
                             bit <1> valid_list_for_worker_1;
-                            valid_list_for_worker_1 = toggle_list_validity_1.execute(hdr.falcon.cluster_id);
+                            @stage(4){
+                                valid_list_for_worker_1 = toggle_list_validity_1.execute(hdr.falcon.cluster_id);
+                            }
+
                             if (valid_list_for_worker_1 == 0) {
-                                    read_worker_1_0();
-                                    read_worker_2_0();
+                                    read_worker_lo_0();
+                                    read_worker_hi_0();
                                     assign_qlen_random1.apply();
                                     assign_qlen_random2.apply();
                                     compare_queue_len();
@@ -485,36 +545,46 @@ control LeafIngress(
                                     } else {
                                         hdr.falcon.dst_id = falcon_md.random_downstream_id_2;
                                     }
-                                    if(hdr.falcon.dst_id==1){
-                                        falcon_md.worker_qlen_1 = falcon_md.worker_qlen_1 + falcon_md.queue_len_unit;
-                                    } else if(hdr.falcon.dst_id==2) {
-                                        falcon_md.worker_qlen2 = falcon_md.worker_qlen_2 + falcon_md.queue_len_unit;
+                                    inc_selected_qlen.apply();
+                                    // if(hdr.falcon.dst_id==1){
+                                    //     falcon_md.worker_qlen_lo = falcon_md.worker_qlen_lo + falcon_md.queue_len_unit;
+                                    // } else if(hdr.falcon.dst_id==2) {
+                                    //     falcon_md.worker_qlen2 = falcon_md.worker_qlen_hi + falcon_md.queue_len_unit;
+                                    // }
+                                    @stage(5){
+                                        write_worker_lo_1();
                                     }
-                                    write_worker_1_1();
-                                    write_worker_2_1();
+                                    @stage(6){
+                                        write_worker_hi_1();
+                                    }
                             } else {
-                                    read_worker_1_1();
-                                    read_worker_2_1();
-                                    assign_qlen_random1.apply();
-                                    assign_qlen_random2.apply();
-                                    compare_queue_len();
-                                    if(falcon_md.selected_worker_qlen == falcon_md.random_worker_qlen_1) {
-                                        hdr.falcon.dst_id = falcon_md.random_downstream_id_1;
-                                    } else {
-                                        hdr.falcon.dst_id = falcon_md.random_downstream_id_2;
+                                    read_worker_lo_1();
+                                    read_worker_hi_1();
+                                    assign_qlen_random1_copy.apply();
+                                    // assign_qlen_random2.apply();
+                                    // compare_queue_len();
+                                    // if(falcon_md.selected_worker_qlen == falcon_md.random_worker_qlen_1) {
+                                    //     hdr.falcon.dst_id = falcon_md.random_downstream_id_1;
+                                    // } else {
+                                    //     hdr.falcon.dst_id = falcon_md.random_downstream_id_2;
+                                    // }
+                                    // if(hdr.falcon.dst_id==1){
+                                    //     falcon_md.worker_qlen_lo = falcon_md.worker_qlen_lo + falcon_md.queue_len_unit;
+                                    // } else if(hdr.falcon.dst_id==2) {
+                                    //     falcon_md.worker_qlen2 = falcon_md.worker_qlen_hi + falcon_md.queue_len_unit;
+                                    // }
+                                    @stage(5){
+                                    write_worker_lo_0();
                                     }
-                                    if(hdr.falcon.dst_id==1){
-                                        falcon_md.worker_qlen_1 = falcon_md.worker_qlen_1 + falcon_md.queue_len_unit;
-                                    } else if(hdr.falcon.dst_id==2) {
-                                        falcon_md.worker_qlen2 = falcon_md.worker_qlen_2 + falcon_md.queue_len_unit;
+                                    @stage(6){
+                                    write_worker_hi_0();
                                     }
-                                    write_worker_1_0();
-                                    write_worker_2_0();
                             }
                             
                             
                         }
                     }
+                    forward_falcon_switch_dst.apply();
                 }  else if (hdr.ipv4.isValid()) { // Regular switching procedure
                     // TODO: Not ported the ip matching tables for now, do we need them?
                     

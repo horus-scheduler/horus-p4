@@ -31,7 +31,10 @@
 #define QUEUE_LEN_FIXED_POINT_SIZE 8
 
 // These are local per-rack values as ToR does not care about other racks
-
+struct worker_t {
+    bit<8> qlen;
+    bit<8> wid;
+}
 
 header falcon_h {
     bit<HDR_PKT_TYPE_SIZE> pkt_type;
@@ -68,6 +71,8 @@ struct falcon_metadata_t {
     bit<16> cluster_num_valid_ds;
     bit<16> random_downstream_id_1;
     bit<16> random_downstream_id_2;
+    bit<16> random_worker_index_1;
+    bit<16> random_worker_index_2;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_1;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_2;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_3;
@@ -82,6 +87,13 @@ struct falcon_metadata_t {
     bit<QUEUE_LEN_FIXED_POINT_SIZE> not_selected_worker_qlen;
     bit<1> valid_list_random_worker_1;
     bit<1> valid_list_random_worker_2;
+    bit<32> worker_qlen_hi;
+    bit<32> worker_qlen_lo;
+    bit<32> value_to_add_lo;
+    bit<32> value_to_add_hi;
+    bit<32> write_qlen_hi;
+    bit<32> write_qlen_lo;
+    bit<1> minimum_updated;
 }
 
 
