@@ -60,6 +60,7 @@ struct eg_metadata_t {
 struct falcon_metadata_t {
     
     bit<HDR_SRC_ID_SIZE> linked_sq_id;
+    bit<HDR_SRC_ID_SIZE> linked_iq_id;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> queue_len_unit; // (1/num_worekrs) for each vcluster
     bit<HDR_SRC_ID_SIZE> cluster_idle_count;
     bit<16> idle_worker_index;
@@ -81,6 +82,16 @@ struct falcon_metadata_t {
     bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_6;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_7;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_8;
+
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_9;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_10;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_11;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_12;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_13;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_14;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_15;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_16;
+
     bit<QUEUE_LEN_FIXED_POINT_SIZE> random_worker_qlen_1;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> random_worker_qlen_2;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> selected_worker_qlen;
@@ -93,7 +104,11 @@ struct falcon_metadata_t {
     bit<32> value_to_add_hi;
     bit<32> write_qlen_hi;
     bit<32> write_qlen_lo;
+    bit<16> next_random_wid;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> next_random_qlen;
     bit<1> minimum_updated;
+    bit<16> last_probed_id;
+    
 }
 
 
