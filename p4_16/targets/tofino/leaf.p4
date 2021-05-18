@@ -526,6 +526,7 @@ control LeafIngress(
             action compare_queue_len() {
                 falcon_md.selected_worker_qlen = min(falcon_md.random_worker_qlen_1, falcon_md.random_worker_qlen_2);
             }
+            
             apply {
                 if (hdr.falcon.isValid()) {  // Falcon packet
                     get_worker_start_idx(); // Get start index of workers for this vcluster
@@ -536,25 +537,6 @@ control LeafIngress(
                         falcon_md.linked_sq_id = read_linked_sq.execute(hdr.falcon.cluster_id); // Get ID of the Spine that the leaf reports to
                         // TODO: Do this in server agent to save computation resource at switch (send adjust index as src_id)
                         get_worker_index();
-                        falcon_md.selected_worker_qlen = hdr.falcon.qlen;
-                        write_queue_len_list_1.execute(falcon_md.worker_index);
-                        write_queue_len_list_2.execute(falcon_md.worker_index);
-                        write_queue_len_list_3.execute(falcon_md.worker_index);
-                        write_queue_len_list_4.execute(falcon_md.worker_index);
-                        write_queue_len_list_5.execute(falcon_md.worker_index);
-                        write_queue_len_list_6.execute(falcon_md.worker_index);
-                        write_queue_len_list_7.execute(falcon_md.worker_index);
-                        // write_queue_len_list_8.execute(falcon_md.worker_index);
-                        // write_queue_len_list_9.execute(falcon_md.worker_index);
-                        // write_queue_len_list_10.execute(falcon_md.worker_index);
-                        // write_queue_len_list_11.execute(falcon_md.worker_index);
-                        // write_queue_len_list_12.execute(falcon_md.worker_index);
-                        // write_queue_len_list_13.execute(falcon_md.worker_index);
-                        // write_queue_len_list_14.execute(falcon_md.worker_index);
-                        // write_queue_len_list_15.execute(falcon_md.worker_index);
-                        // write_queue_len_list_16.execute(falcon_md.worker_index);
-                        //... Rest of workers
-
                         falcon_md.aggregate_queue_len = dec_aggregate_queue_len.execute(hdr.falcon.cluster_id);
                         if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE) {
                             falcon_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.falcon.cluster_id); // Read last idle count for vcluster
@@ -570,6 +552,25 @@ control LeafIngress(
                                 gen_random_probe_group();
                             }
                         }
+                        write_queue_len_list_1.execute(falcon_md.worker_index);
+                        write_queue_len_list_2.execute(falcon_md.worker_index);
+                        write_queue_len_list_3.execute(falcon_md.worker_index);
+                        write_queue_len_list_4.execute(falcon_md.worker_index);
+                        // write_queue_len_list_5.execute(falcon_md.worker_index);
+                        // write_queue_len_list_6.execute(falcon_md.worker_index);
+                        // write_queue_len_list_7.execute(falcon_md.worker_index);
+                        // write_queue_len_list_8.execute(falcon_md.worker_index);
+                        // write_queue_len_list_9.execute(falcon_md.worker_index);
+                        // write_queue_len_list_10.execute(falcon_md.worker_index);
+                        // write_queue_len_list_11.execute(falcon_md.worker_index);
+                        // write_queue_len_list_12.execute(falcon_md.worker_index);
+                        // write_queue_len_list_13.execute(falcon_md.worker_index);
+                        // write_queue_len_list_14.execute(falcon_md.worker_index);
+                        // write_queue_len_list_15.execute(falcon_md.worker_index);
+                        // write_queue_len_list_16.execute(falcon_md.worker_index);
+                        //... Rest of workers
+
+                        
                         if (falcon_md.linked_sq_id != 0xFF) {
                             // Set different mirror types for different headers if needed
                             ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE; 
@@ -581,7 +582,6 @@ control LeafIngress(
                             hdr.falcon.pkt_type = PKT_TYPE_QUEUE_SIGNAL;
                             hdr.falcon.qlen = falcon_md.aggregate_queue_len;
                             hdr.falcon.dst_id = falcon_md.linked_sq_id;
-                            
                         }
                     } else if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
                         falcon_md.cluster_idle_count = read_and_dec_idle_count.execute(hdr.falcon.cluster_id); // Read last idle count for vcluster
@@ -595,16 +595,15 @@ control LeafIngress(
                             gen_random_workers_16();    
                             adjust_random_range.apply();
                             
-                            
                             falcon_md.worker_qlen_1 = read_queue_len_list_1.execute(hdr.falcon.cluster_id);
                             falcon_md.worker_qlen_2 = read_queue_len_list_2.execute(hdr.falcon.cluster_id);
                             falcon_md.worker_qlen_3 = read_queue_len_list_3.execute(hdr.falcon.cluster_id);
                             falcon_md.worker_qlen_4 = read_queue_len_list_4.execute(hdr.falcon.cluster_id);
 
-                            falcon_md.worker_qlen_5 = read_queue_len_list_5.execute(hdr.falcon.cluster_id);
-                            falcon_md.worker_qlen_6 = read_queue_len_list_6.execute(hdr.falcon.cluster_id);
-                            falcon_md.worker_qlen_7 = read_queue_len_list_7.execute(hdr.falcon.cluster_id);
-                            falcon_md.worker_qlen_8 = read_queue_len_list_8.execute(hdr.falcon.cluster_id);
+                            // falcon_md.worker_qlen_5 = read_queue_len_list_5.execute(hdr.falcon.cluster_id);
+                            // falcon_md.worker_qlen_6 = read_queue_len_list_6.execute(hdr.falcon.cluster_id);
+                            // falcon_md.worker_qlen_7 = read_queue_len_list_7.execute(hdr.falcon.cluster_id);
+                            // falcon_md.worker_qlen_8 = read_queue_len_list_8.execute(hdr.falcon.cluster_id);
 
                             // falcon_md.worker_qlen_9 = read_queue_len_list_9.execute(hdr.falcon.cluster_id);
                             // falcon_md.worker_qlen_10 = read_queue_len_list_10.execute(hdr.falcon.cluster_id);
@@ -620,12 +619,14 @@ control LeafIngress(
                             assign_qlen_random1.apply();
                             assign_qlen_random2.apply();
                             compare_queue_len();
-                            if(falcon_md.selected_worker_qlen == falcon_md.random_worker_qlen_1) {
-                                hdr.falcon.dst_id = falcon_md.random_downstream_id_1;
-                            } else {
-                                hdr.falcon.dst_id = falcon_md.random_downstream_id_2;
-                            }
+                            // COMPILE ERROR: Uncomment lines 623 to 627 to reproduce the error
+                            // if(falcon_md.selected_worker_qlen == falcon_md.random_worker_qlen_1) {
+                            //     hdr.falcon.dst_id = falcon_md.random_downstream_id_1;
+                            // } else {
+                            //     hdr.falcon.dst_id = falcon_md.random_downstream_id_2;
+                            // }
                         }
+                        
                         // Rack not idle anymore after this assignment
                         // TODO: Currently, leaf will only send PKT_TYPE_IDLE_REMOVE when there was some linked IQ 
                         //  This means that for task that is coming because of random decision we are not sending Idle remove
@@ -644,7 +645,7 @@ control LeafIngress(
                             hdr.falcon.pkt_type = PKT_TYPE_IDLE_REMOVE;
                             //ig_intr_tm_md.ucast_egress_port = ig_intr_md.ingress_port;
                         }
-                        
+                    
                     } else if (hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_RESPONSE) {
                         falcon_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.falcon.cluster_id); // Read last idle count for vcluster
                         if (falcon_md.cluster_idle_count > 0) { // Still idle workers available
@@ -664,7 +665,7 @@ control LeafIngress(
                         }
                     } else if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_REMOVE) {
                         falcon_md.linked_sq_id = 0xFFFF;
-                        write_linked_sq.execute(hdr.falcon.cluster_id);
+                        //write_linked_sq.execute(hdr.falcon.cluster_id);
                         _drop();
                     }
 
