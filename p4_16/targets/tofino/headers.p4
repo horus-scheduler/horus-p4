@@ -107,8 +107,15 @@ struct falcon_metadata_t {
     bit<16> next_random_wid;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> next_random_qlen;
     bit<1> minimum_updated;
-    bit<16> last_probed_id;
-    
+    bit<16> idle_worker_id;
+    bit<16> dst_id_1;
+    bit<16> dst_id_2;
+    bit<16> dst_id_3;
+    bit<16> dst_id_4;
+    bit<16> dst_id_5;
+    bit<8> selected_spine_iq_len;
+    bit<8> last_iq_len;
+	bit<16> last_probed_id;
 }
 
 
