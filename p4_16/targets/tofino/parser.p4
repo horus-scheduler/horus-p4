@@ -61,7 +61,19 @@ parser FalconIngressParser (
         }
     }
 
+
     state parse_falcon {
+        transition select (ig_intr_md.resubmit_flag) { // Assume only one resubmission type for now
+            0: parse_falcon_end; // Not resubmitted
+            1: parse_falcon_resub_end; // Resubmitted packet
+        }
+    }
+    state parse_falcon_end {
+        pkt.extract(hdr.falcon);
+        transition accept;
+    }
+    state parse_falcon_resub_end {
+        pkt.extract(falcon_md.task_resub_hdr); // Extract data from previous pas
         pkt.extract(hdr.falcon);
         transition accept;
     }

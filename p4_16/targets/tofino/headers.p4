@@ -57,6 +57,10 @@ struct eg_metadata_t {
 
 }
 
+header resub_hdr_t {
+    bit<16> udpate_worker_index;
+}
+
 struct falcon_metadata_t {
     
     bit<HDR_SRC_ID_SIZE> linked_sq_id;
@@ -115,7 +119,8 @@ struct falcon_metadata_t {
     bit<16> dst_id_5;
     bit<8> selected_spine_iq_len;
     bit<8> last_iq_len;
-	bit<16> last_probed_id;
+    bit<16> last_probed_id;
+    resub_hdr_t task_resub_hdr;
 }
 
 
