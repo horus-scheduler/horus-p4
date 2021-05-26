@@ -17,6 +17,8 @@
 #define MIRROR_TYPE_WORKER_RESPONSE 1
 #define MIRROR_TYPE_NEW_TASK 2
 
+#define RESUBMIT_TYPE_NEW_TASK 1
+
 typedef bit<8> queue_len_t;
 typedef bit<9> port_id_t;
 typedef bit<16> worker_id_t;
@@ -108,6 +110,12 @@ control LeafIngress(
                     rv = value;
                 }
             };
+             RegisterAction<queue_len_t, _, queue_len_t>(queue_len_1) write_queue_len_list_1 = {
+                void apply(inout queue_len_t value, out queue_len_t rv) {
+                    value = hdr.falcon.qlen;
+                    rv = value;
+                }
+            };
 
 
             Register<queue_len_t, _>(1024) queue_len_2; // List of queue lens for all vclusters
@@ -119,6 +127,12 @@ control LeafIngress(
             };
             RegisterAction<queue_len_t, _, queue_len_t>(queue_len_2) read_queue_len_list_2 = {
                 void apply(inout queue_len_t value, out queue_len_t rv) {
+                    rv = value;
+                }
+            };
+            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_2) write_queue_len_list_2 = {
+                void apply(inout queue_len_t value, out queue_len_t rv) {
+                    value = hdr.falcon.qlen;
                     rv = value;
                 }
             };
@@ -625,11 +639,10 @@ control LeafIngress(
                      Registers:
                      * All of the worker qlen related regs, deps: resource limit of prev stage  
                     */
-                    @stage(2){
+                    @stage(2) {
                         if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK){
                             get_curr_idle_index(); // decrement the index so we read the correct idle worker id
-                            adjust_random_range.apply();
-                            
+                            adjust_random_range.apply(); // move the random indexes to be in range of num workers in rack
                             
                             // falcon_md.worker_qlen_3 = read_queue_len_list_3.execute(hdr.falcon.cluster_id);
                             // falcon_md.worker_qlen_4 = read_queue_len_list_4.execute(hdr.falcon.cluster_id);
@@ -653,8 +666,10 @@ control LeafIngress(
                                 convert_pkt_to_sq_signal();
                                 hdr.falcon.dst_id = hdr.falcon.src_id;
                             }
-                        }   
-                        compare_spine_iq_len();
+                        } else if (hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_RESPONSE){
+                            compare_spine_iq_len();
+                        }
+
                     } 
                     /** Stage 3
                      * Register:
@@ -686,17 +701,21 @@ control LeafIngress(
                     /** Stage 4
                      * 
                     */
+                    @stage(4){
                     if (ig_intr_md.resubmit_flag != 0) { // packet is resubmitted
                         inc_queue_len_list_1.execute(falcon_md.task_resub_hdr.udpate_worker_index);
                         inc_queue_len_list_2.execute(falcon_md.task_resub_hdr.udpate_worker_index);
                     }
                     else {
-                        if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK){
-                            falcon_md.worker_qlen_1 = read_queue_len_list_1.execute(falcon_md.random_downstream_id_1);
-                            falcon_md.worker_qlen_2 = read_queue_len_list_2.execute(falcon_md.random_downstream_id_2);
-                        } 
+                        if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK && falcon_md.cluster_idle_count == 0) {
+                            falcon_md.random_worker_qlen_1 = read_queue_len_list_1.execute(falcon_md.random_downstream_id_1);
+                            falcon_md.random_worker_qlen_2 = read_queue_len_list_2.execute(falcon_md.random_downstream_id_2);
+                        } else if(hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE) {
+                            write_queue_len_list_1.execute(hdr.falcon.src_id);
+                            write_queue_len_list_2.execute(hdr.falcon.src_id);
+                        }
                     }
-                    // LAST STAGE
+                    // TODO: Should we trigger mirroring in last stage? or does it work from any stage
                     if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE) {
                         if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE) {
                             if (falcon_md.cluster_idle_count == 1) { // Leaf just became idle so needs to announce to the spine layer
@@ -716,161 +735,40 @@ control LeafIngress(
                             
                         }
                     }
-                    // } 
-                    
-                    
+                    }
 
-                    //     // TODO: Do this in server agent to save computation resource at switch (send adjust index as src_id)
-                        
-                    //     // Known issue: 
-                    //     // Also 
-                    //     // @stage(1){
-                    //     //     get_worker_index();
-                    //     // }
-                    //     if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE) {
-                    //          // Read last idle count for vcluster
-                    //         // @st >= st_idle_count --> st=1
-                    //         get_idle_index (); // Get the index of idle worker in idle list (pointes to next available index)
-                    //         // @st st_idle_list >=3 (restricted by other branch)
-                    //         add_to_idle_list.execute(falcon_md.idle_worker_index); /// Add src_id to Idle list.
-                    //         // @st >= st_idle_count --> st=1
-                    //         if (falcon_md.cluster_idle_count == 1) { // Leaf just became idle so needs to announce to the spine layer
-                    //             // @st >=1
-                    //             hdr.falcon.pkt_type = PKT_TYPE_PROBE_IDLE_QUEUE; // Change packet type to probe
-                    //             /* 
-                    //              TODO: Check details of ig_intr_tm_md.mcast_grp_a, mcast_grp_b
-                    //              TODO: How to route packet to spines in other pods that are multi hops away?
-                    //             */
-                    //             // @INFO: Compiler put this on stage 2 although it can be placed on 1 (explicitly set)
-                    //             @stage(1){
-                    //                 falcon_md.rand_probe_group = (bit<16>)random_probe_group.get(); 
-                    //             }
-                    //             // @st >= rand_probe_group --> st=2 INFO: This maps to stage 3 don't know why?
-                    //             @stage(2){
-                    //                 gen_random_probe_group();
-                    //             }
-                    //         }
-                    //     }
-                        
-                    //     write_queue_len_list_1.execute(hdr.falcon.src_id);
-                    //     write_queue_len_list_2.execute(hdr.falcon.src_id);
-                    //     write_queue_len_list_3.execute(hdr.falcon.src_id);
-                    //     write_queue_len_list_4.execute(hdr.falcon.src_id);
-                    //     // write_queue_len_list_5.execute(falcon_md.worker_index);
-                    //     // write_queue_len_list_6.execute(falcon_md.worker_index);
-                    //     // write_queue_len_list_7.execute(falcon_md.worker_index);
-                    //     // write_queue_len_list_8.execute(falcon_md.worker_index);
-                    //     // write_queue_len_list_9.execute(falcon_md.worker_index);
-                    //     // write_queue_len_list_10.execute(falcon_md.worker_index);
-                    //     // write_queue_len_list_11.execute(falcon_md.worker_index);
-                    //     // write_queue_len_list_12.execute(falcon_md.worker_index);
-                    //     // write_queue_len_list_13.execute(falcon_md.worker_index);
-                    //     // write_queue_len_list_14.execute(falcon_md.worker_index);
-                    //     // write_queue_len_list_15.execute(falcon_md.worker_index);
-                    //     // write_queue_len_list_16.execute(falcon_md.worker_index);
-                    //     //... Rest of workers
+                    /** Stage 5
+                     * 
+                    */
+                    @stage(5){
+                    if (ig_intr_md.resubmit_flag == 0) { // packet is resubmitted
+                        if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK && falcon_md.cluster_idle_count == 0) {
+                            compare_queue_len();
+                        }
+                    }
+                    }
 
-                        
-                    //     if (falcon_md.linked_sq_id != 0xFF) {
-                    //         // Set different mirror types for different headers if needed
-                    //         ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE; 
-                    //         /* 
-                    //         Desired behaviour: Mirror premitive (emit invoked in ingrdeparser) will send the original response
-                    //         Here we modify the original packet and send it as a ctrl pkt to the linked spine.
-                    //         TODO: Might not work as we expect.
-                    //         */
-                    //         hdr.falcon.pkt_type = PKT_TYPE_QUEUE_SIGNAL;
-                    //         hdr.falcon.qlen = falcon_md.aggregate_queue_len;
-                    //         hdr.falcon.dst_id = falcon_md.linked_sq_id;
-                    //     }
-                    // } 
-                    // else if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
-                    //     // @st st_idle_count >= 0
-                        
-                    //     // @st st_aggregate_queue_len >= 0
-                    //     if (falcon_md.cluster_idle_count > 0) {
-                    //         // @st >= st_idle_count --> st=1
-                    //         get_idle_index();
-                    //         // @st >= get_idle_index --> st=2
-                    //         get_curr_idle_index(); // Decrements the idle index so we read the correct index (stack peak)
-                    //         // @st st_idle_list >= get_curr_idle_index --> st=3
-                    //         hdr.falcon.dst_id = read_idle_list.execute(falcon_md.idle_worker_index);
-                    //     } else {
-                    //         get_cluster_num_valid_ds.apply(); // Get num workers in this rack for this vcluster? Configured by ctrl plane.
-                    //         gen_random_workers_16();    
-                    //         adjust_random_range.apply();
-                            
-                    //         falcon_md.worker_qlen_1 = read_queue_len_list_1.execute(hdr.falcon.cluster_id);
-                    //         falcon_md.worker_qlen_2 = read_queue_len_list_2.execute(hdr.falcon.cluster_id);
-                    //         falcon_md.worker_qlen_3 = read_queue_len_list_3.execute(hdr.falcon.cluster_id);
-                    //         falcon_md.worker_qlen_4 = read_queue_len_list_4.execute(hdr.falcon.cluster_id);
-
-                    //         // falcon_md.worker_qlen_5 = read_queue_len_list_5.execute(hdr.falcon.cluster_id);
-                    //         // falcon_md.worker_qlen_6 = read_queue_len_list_6.execute(hdr.falcon.cluster_id);
-                    //         // falcon_md.worker_qlen_7 = read_queue_len_list_7.execute(hdr.falcon.cluster_id);
-                    //         // falcon_md.worker_qlen_8 = read_queue_len_list_8.execute(hdr.falcon.cluster_id);
-
-                    //         // falcon_md.worker_qlen_9 = read_queue_len_list_9.execute(hdr.falcon.cluster_id);
-                    //         // falcon_md.worker_qlen_10 = read_queue_len_list_10.execute(hdr.falcon.cluster_id);
-                    //         // falcon_md.worker_qlen_11 = read_queue_len_list_11.execute(hdr.falcon.cluster_id);
-                    //         // falcon_md.worker_qlen_12 = read_queue_len_list_12.execute(hdr.falcon.cluster_id);
-
-                    //         // falcon_md.worker_qlen_13 = read_queue_len_list_13.execute(hdr.falcon.cluster_id);
-                    //         // falcon_md.worker_qlen_14 = read_queue_len_list_14.execute(hdr.falcon.cluster_id);
-                    //         // falcon_md.worker_qlen_15 = read_queue_len_list_15.execute(hdr.falcon.cluster_id);
-                    //         // falcon_md.worker_qlen_16 = read_queue_len_list_16.execute(hdr.falcon.cluster_id);
-                    //         //... Rest of workers
-
-                    //         assign_qlen_random1.apply();
-                    //         assign_qlen_random2.apply();
-                    //         compare_queue_len();
-                    //         // COMPILE ERROR: Uncomment lines 623 to 627 to reproduce the error
-                    //         // if(falcon_md.selected_worker_qlen == falcon_md.random_worker_qlen_1) {
-                    //         //     hdr.falcon.dst_id = falcon_md.random_downstream_id_1;
-                    //         // } else {
-                    //         //     hdr.falcon.dst_id = falcon_md.random_downstream_id_2;
-                    //         // }
-                    //     }
-                        
-                    //     // Rack not idle anymore after this assignment
-                    //     // TODO: Currently, leaf will only send PKT_TYPE_IDLE_REMOVE when there was some linked IQ 
-                    //     //  This means that for task that is coming because of random decision we are not sending Idle remove
-                    //     //  This limitation is because spine can not iterate over the idle list to remove a switch at the middle it has a stack and can pop only!
-                    //     if (falcon_md.cluster_idle_count == 0 && falcon_md.linked_iq_id != 0xFFFF) {
-                    //         ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_NEW_TASK;
-                            
-                    //         /* 
-                    //         Desired behaviour: Mirror premitive (emit invoked in ingrdeparser) will send the original task packet to the 
-                    //         Here we modify the original packet and send it as a ctrl pkt to the linked IQ spine.
-                    //         TODO: Might not work as we expect.
-                    //         */
-                            
-                    //         // Reply to the spine with Idle remove
-                    //         hdr.falcon.dst_id = read_reset_linked_iq.execute(hdr.falcon.cluster_id);   
-                    //         hdr.falcon.pkt_type = PKT_TYPE_IDLE_REMOVE;
-                    //         //ig_intr_tm_md.ucast_egress_port = ig_intr_md.ingress_port;
-                    //     }
-                    
-                    // } else if (hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_RESPONSE) {
-                        
-                    //     if (falcon_md.cluster_idle_count > 0) { // Still idle workers available
-                            
-                    //         bit<8> last_iq_len;
-                    //         bit<16> last_probed_id;
-                    //         last_iq_len = read_update_spine_iq_len_1.execute(hdr.falcon.cluster_id);
-                    //         last_probed_id = read_update_spine_probed_id.execute(hdr.falcon.cluster_id);
-                    //         if (last_probed_id != 0xFF) { // This is the first probe
-                    //             if (last_iq_len < 3) { //TODO: Fix comparison here
-                    //                 hdr.falcon.dst_id = last_probed_id;
-                    //             } else { // Send back
-                    //                 hdr.falcon.dst_id = hdr.falcon.src_id;
-                    //             }
-                    //             hdr.falcon.pkt_type = PKT_TYPE_IDLE_SIGNAL;
-                    //         }
-                    //     }
-                    // } else if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_REMOVE) {
-                    //     _drop();
-                    // }
+                    /* Stage 6
+                     *
+                    */
+                    @stage(6) {
+                        if (ig_intr_md.resubmit_flag == 0) { // packet is in first pass
+                            if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
+                                if (falcon_md.cluster_idle_count == 0) {
+                                    if (falcon_md.selected_worker_qlen == falcon_md.random_worker_qlen_1) {
+                                        falcon_md.task_resub_hdr.udpate_worker_index = falcon_md.random_downstream_id_1;
+                                        hdr.falcon.dst_id = falcon_md.random_downstream_id_1;
+                                    } else {
+                                        falcon_md.task_resub_hdr.udpate_worker_index = falcon_md.random_downstream_id_2;
+                                        hdr.falcon.dst_id = falcon_md.random_downstream_id_1;
+                                    }
+                                    ig_intr_dprsr_md.resubmit_type = RESUBMIT_TYPE_NEW_TASK;
+                                } else {
+                                    hdr.falcon.dst_id = falcon_md.idle_worker_id;
+                                }
+                            }
+                        }
+                    }
 
                     forward_falcon_switch_dst.apply();
                     
@@ -891,6 +789,7 @@ control LeafIngressDeparser(
         in ingress_intrinsic_metadata_for_deparser_t ig_intr_dprsr_md) {
          
     Mirror() mirror;
+    Resubmit() resubmit;
 
     apply {
         if (ig_intr_dprsr_md.mirror_type == MIRROR_TYPE_WORKER_RESPONSE) {
@@ -907,6 +806,9 @@ control LeafIngressDeparser(
             mirror.emit<empty_t>((MirrorId_t) hdr.falcon.dst_id, {}); 
         }  else if (ig_intr_dprsr_md.mirror_type == MIRROR_TYPE_NEW_TASK) {
 
+        }
+        if (ig_intr_dprsr_md.resubmit_type == RESUBMIT_TYPE_NEW_TASK) {
+            resubmit.emit(falcon_md.task_resub_hdr);
         }
         pkt.emit(hdr.ethernet);
         pkt.emit(hdr.ipv4);
