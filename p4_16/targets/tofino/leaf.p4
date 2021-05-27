@@ -8,6 +8,8 @@
 
 #define MAX_VCLUSTERS 32
 #define MAX_WORKERS_PER_CLUSTER 16
+
+#define MAX_WORKERS_IN_RACK 1024 
 /* 
  This limits the number of multicast groups available for selecting spines. Put log (base 2) of max groups here.
  Max number of groups will be 2^MAX_BITS_UPSTREAM_MCAST_GROUP
@@ -62,7 +64,7 @@ control LeafIngress(
             /* *** Register definitions *** */ 
             // TODO: Check Reg definition is _ correct?
             // idle list should be allocated to store MAX_VCLUSTER_RACK * MAX_IDLES_RACK
-            Register<worker_id_t, _>(1024) idle_list;
+            Register<worker_id_t, _>(MAX_WORKERS_IN_RACK) idle_list;
             RegisterAction<bit<16>, _, bit<16>>(idle_list) add_to_idle_list = {
                 void apply(inout bit<16> value, out bit<16> rv) {
                     value = hdr.falcon.src_id;
@@ -98,7 +100,7 @@ control LeafIngress(
             };
             
 
-            Register<queue_len_t, _>(1024) queue_len_1; // List of queue lens for all vclusters
+            Register<queue_len_t, _>(MAX_WORKERS_IN_RACK) queue_len_1; // List of queue lens for all vclusters
             RegisterAction<queue_len_t, _, queue_len_t>(queue_len_1) inc_queue_len_list_1 = {
                 void apply(inout queue_len_t value, out queue_len_t rv) {
                     value = value + 1;
@@ -118,7 +120,7 @@ control LeafIngress(
             };
 
 
-            Register<queue_len_t, _>(1024) queue_len_2; // List of queue lens for all vclusters
+            Register<queue_len_t, _>(MAX_WORKERS_IN_RACK) queue_len_2; // List of queue lens for all vclusters
             RegisterAction<queue_len_t, _, queue_len_t>(queue_len_2) inc_queue_len_list_2 = {
                 void apply(inout queue_len_t value, out queue_len_t rv) {
                     value = value + 1;
@@ -133,188 +135,6 @@ control LeafIngress(
             RegisterAction<queue_len_t, _, queue_len_t>(queue_len_2) write_queue_len_list_2 = {
                 void apply(inout queue_len_t value, out queue_len_t rv) {
                     value = hdr.falcon.qlen;
-                    rv = value;
-                }
-            };
-            
-            Register<queue_len_t, _>(1024) queue_len_3; // List of queue lens for all vclusters
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_3) write_queue_len_list_3 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    value = hdr.falcon.qlen;
-                    rv = value;
-                }
-            };
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_3) read_queue_len_list_3 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    rv = value;
-                }
-            };
-
-            Register<queue_len_t, _>(1024) queue_len_4; // List of queue lens for all vclusters
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_4) write_queue_len_list_4 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    value = hdr.falcon.qlen;
-                    rv = value;
-                }
-            };
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_4) read_queue_len_list_4 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    rv = value;
-                }
-            };
-
-            Register<queue_len_t, _>(1024) queue_len_5; // List of queue lens for all vclusters
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_5) write_queue_len_list_5 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    value = hdr.falcon.qlen;
-                    rv = value;
-                }
-            };
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_5) read_queue_len_list_5 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    rv = value;
-                }
-            };
-
-            Register<queue_len_t, _>(1024) queue_len_6; // List of queue lens for all vclusters
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_6) write_queue_len_list_6 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    value = hdr.falcon.qlen;
-                    rv = value;
-                }
-            };
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_6) read_queue_len_list_6 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    rv = value;
-                }
-            };
-
-            Register<queue_len_t, _>(1024) queue_len_7; // List of queue lens for all vclusters
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_7) write_queue_len_list_7 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    value = hdr.falcon.qlen;
-                    rv = value;
-                }
-            };
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_7) read_queue_len_list_7 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    rv = value;
-                }
-            };
-
-            Register<queue_len_t, _>(1024) queue_len_8; // List of queue lens for all vclusters
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_8) write_queue_len_list_8 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    value = hdr.falcon.qlen;
-                    rv = value;
-                }
-            };
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_8) read_queue_len_list_8 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    rv = value;
-                }
-            };
-
-            Register<queue_len_t, _>(1024) queue_len_9; // List of queue lens for all vclusters
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_9) write_queue_len_list_9 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    value = hdr.falcon.qlen;
-                    rv = value;
-                }
-            };
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_9) read_queue_len_list_9 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    rv = value;
-                }
-            };
-
-            Register<queue_len_t, _>(1024) queue_len_10; // List of queue lens for all vclusters
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_10) write_queue_len_list_10 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    value = hdr.falcon.qlen;
-                    rv = value;
-                }
-            };
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_10) read_queue_len_list_10 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    rv = value;
-                }
-            };
-
-            Register<queue_len_t, _>(1024) queue_len_11; // List of queue lens for all vclusters
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_11) write_queue_len_list_11 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    value = hdr.falcon.qlen;
-                    rv = value;
-                }
-            };
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_11) read_queue_len_list_11 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    rv = value;
-                }
-            };
-
-            Register<queue_len_t, _>(1024) queue_len_12; // List of queue lens for all vclusters
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_12) write_queue_len_list_12 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    value = hdr.falcon.qlen;
-                    rv = value;
-                }
-            };
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_12) read_queue_len_list_12 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    rv = value;
-                }
-            };
-
-            Register<queue_len_t, _>(1024) queue_len_13; // List of queue lens for all vclusters
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_13) write_queue_len_list_13 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    value = hdr.falcon.qlen;
-                    rv = value;
-                }
-            };
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_13) read_queue_len_list_13 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    rv = value;
-                }
-            };
-
-            Register<queue_len_t, _>(1024) queue_len_14; // List of queue lens for all vclusters
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_14) write_queue_len_list_14 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    value = hdr.falcon.qlen;
-                    rv = value;
-                }
-            };
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_14) read_queue_len_list_14 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    rv = value;
-                }
-            };
-
-            Register<queue_len_t, _>(1024) queue_len_15; // List of queue lens for all vclusters
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_15) write_queue_len_list_15 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    value = hdr.falcon.qlen;
-                    rv = value;
-                }
-            };
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_15) read_queue_len_list_15 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    rv = value;
-                }
-            };
-
-            Register<queue_len_t, _>(1024) queue_len_16; // List of queue lens for all vclusters
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_16) write_queue_len_list_16 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    value = hdr.falcon.qlen;
-                    rv = value;
-                }
-            };
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_16) read_queue_len_list_16 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
                     rv = value;
                 }
             };
@@ -365,6 +185,7 @@ control LeafIngress(
                     rv = value;
                 }
             };
+
             // Below are registers to hold state in middle of probing Idle list proceess. 
             // So we can compare them when second switch responds.
             Register<queue_len_t, _>(MAX_VCLUSTERS) spine_iq_len_1; // Length of Idle list for first probed spine (1 for each vcluster).
@@ -389,20 +210,15 @@ control LeafIngress(
                     }
                 }
             };
-            Random<bit<MAX_BITS_UPSTREAM_MCAST_GROUP>>() random_probe_group;
+
+            
             /* 
               As a workaround since we can't select the random range in runtime. 
-              We get() from one of these variables depending on number of workers in rack.
-              TODO: This limits the num workers to be pow of 2. Also, is this biased random?
-              TODO: Multiple .get() calls result in different ranodm numbers? Or should we make another Random extern for that purpose?
+              We get() a random variables and shift it depending on number of workers in rack.
+              TODO: This enforces the num workers in rack to be pow of 2. Also, is this biased random?
             */
             Random<bit<16>>() random_worker_id_16;
-            // Random<bit<8>>() random_worker_id_8;
-            // Random<bit<4>>() random_worker_id_4;
-            // Random<bit<2>>() random_worker_id_2;
-            // Random<bit<1>>() random_worker_id_1;
 
-            // Stage X
             action get_worker_start_idx () {
                 falcon_md.cluster_worker_start_idx = (bit <16>) (hdr.falcon.cluster_id * MAX_WORKERS_PER_CLUSTER);
             }
@@ -433,10 +249,10 @@ control LeafIngress(
                 }
                 actions = {
                     act_set_queue_len_unit;
-                    _drop;
+                    NoAction;
                 }
                     size = HDR_CLUSTER_ID_SIZE;
-                    default_action = _drop;
+                    default_action = NoAction;
             }
 
             action gen_random_probe_group() { // For probing two out of n spine schedulers
@@ -675,12 +491,12 @@ control LeafIngress(
                      * Register:
                      * idle_list, dep: idle_count @st0, get_idle_index() @st 1, get_curr_idle_index() @st 2
                     */ 
-                    @stage(3){
+                    @stage(3) {
                         if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE) { 
                             add_to_idle_list.execute(falcon_md.idle_worker_index);
 
                         } else if(hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
-                            if (falcon_md.cluster_idle_count != 0) {
+                            if (falcon_md.cluster_idle_count > 0) {
                                 falcon_md.idle_worker_id = read_idle_list.execute(falcon_md.idle_worker_index);
                             } else {
                                 offset_random_ids();

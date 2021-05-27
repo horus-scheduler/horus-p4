@@ -80,21 +80,6 @@ struct falcon_metadata_t {
     bit<16> random_worker_index_2;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_1;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_2;
-    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_3;
-    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_4;
-    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_5;
-    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_6;
-    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_7;
-    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_8;
-
-    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_9;
-    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_10;
-    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_11;
-    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_12;
-    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_13;
-    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_14;
-    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_15;
-    bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_16;
 
     bit<QUEUE_LEN_FIXED_POINT_SIZE> random_worker_qlen_1;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> random_worker_qlen_2;
@@ -102,25 +87,11 @@ struct falcon_metadata_t {
     bit<QUEUE_LEN_FIXED_POINT_SIZE> not_selected_worker_qlen;
     bit<1> valid_list_random_worker_1;
     bit<1> valid_list_random_worker_2;
-    bit<32> worker_qlen_hi;
-    bit<32> worker_qlen_lo;
-    bit<32> value_to_add_lo;
-    bit<32> value_to_add_hi;
-    bit<32> write_qlen_hi;
-    bit<32> write_qlen_lo;
-    bit<16> next_random_wid;
-    bit<QUEUE_LEN_FIXED_POINT_SIZE> next_random_qlen;
-    bit<1> minimum_updated;
     bit<16> idle_worker_id;
-    bit<16> dst_id_1;
-    bit<16> dst_id_2;
-    bit<16> dst_id_3;
-    bit<16> dst_id_4;
-    bit<16> dst_id_5;
     bit<8> selected_spine_iq_len;
     bit<8> last_iq_len;
-    bit<16> last_probed_id;
-    resub_hdr_t task_resub_hdr;
+	bit<16> last_probed_id;
+	resub_hdr_t task_resub_hdr;
 }
 
 
