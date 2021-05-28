@@ -58,7 +58,8 @@ struct eg_metadata_t {
 }
 
 header resub_hdr_t {
-    bit<16> udpate_worker_index;
+    bit<16> udpate_worker_index; // This shows the index in qlen arrays to be updated
+    //bit<16> dst_id; // This shows the wid to put in packet hdr (and forward based on this)
 }
 
 struct falcon_metadata_t {
@@ -85,12 +86,12 @@ struct falcon_metadata_t {
     bit<QUEUE_LEN_FIXED_POINT_SIZE> random_worker_qlen_2;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> selected_worker_qlen;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> not_selected_worker_qlen;
-    bit<1> valid_list_random_worker_1;
-    bit<1> valid_list_random_worker_2;
+    
     bit<16> idle_worker_id;
     bit<8> selected_spine_iq_len;
     bit<8> last_iq_len;
 	bit<16> last_probed_id;
+	bit<16> spine_to_link_iq;
 	resub_hdr_t task_resub_hdr;
 }
 

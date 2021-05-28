@@ -13,14 +13,9 @@ parser FalconIngressParser (
         out falcon_metadata_t falcon_md,
         out ingress_intrinsic_metadata_t ig_intr_md) {
 
-    TofinoIngressParser() tofino_parser;
+    // TofinoIngressParser() tofino_parser;
 
     state start {
-        tofino_parser.apply(pkt, ig_intr_md);
-        transition meta_init;
-    }
-
-    state meta_init {
         falcon_md.linked_sq_id = 0xFF;
         falcon_md.queue_len_unit = 0;
         falcon_md.cluster_idle_count = 0;   
@@ -32,8 +27,42 @@ parser FalconIngressParser (
         falcon_md.aggregate_queue_len = 0;
         falcon_md.random_downstream_id_1 = 0;
         falcon_md.random_downstream_id_2 = 0;
-        falcon_md.valid_list_random_worker_1 = 0;
-        falcon_md.valid_list_random_worker_2 = 0;
+        pkt.extract(ig_intr_md);
+        transition parse_resub_meta;
+    }
+
+    // state meta_init {
+    //     falcon_md.linked_sq_id = 0xFF;
+    //     falcon_md.queue_len_unit = 0;
+    //     falcon_md.cluster_idle_count = 0;   
+    //     falcon_md.idle_worker_index = 0;   
+    //     falcon_md.worker_index = 0;  
+    //     falcon_md.cluster_worker_start_idx=0;
+    //     falcon_md.rand_probe_group = 0;
+    //     falcon_md.egress_port = 0;
+    //     falcon_md.aggregate_queue_len = 0;
+    //     falcon_md.random_downstream_id_1 = 0;
+    //     falcon_md.random_downstream_id_2 = 0;
+    //     transition parse_resub_meta;
+    // }
+
+    state parse_resub_meta {
+        transition select (ig_intr_md.resubmit_flag) { // Assume only one resubmission type for now
+            0: parse_port_meta; // Not resubmitted
+            1: parse_resub_hdr; // Resubmitted packet
+        }
+    }
+
+    // Header format: ig_intrinsic_md + phase0 (we skipped this part) + ETH/IP... OR ig_intrinsic_md + resubmit + ETH/IP.
+    // So no need to call .advance (or skip) when extracting resub_hdr as by extracting, we are moving the pointer so next state starts at correct index
+    // Note: actual resubmitted header will be 8bytes regardless of our task_resub_hdr size (padded by 0s)
+    state parse_resub_hdr {
+        pkt.extract(falcon_md.task_resub_hdr); // Extract data from previous pas
+        transition parse_ethernet;
+    }
+
+    state parse_port_meta {
+        pkt.advance(PORT_METADATA_SIZE);
         transition parse_ethernet;
     }
 
@@ -61,20 +90,9 @@ parser FalconIngressParser (
         }
     }
 
-
     state parse_falcon {
-        transition select (ig_intr_md.resubmit_flag) { // Assume only one resubmission type for now
-            0: parse_falcon_end; // Not resubmitted
-            1: parse_falcon_resub_end; // Resubmitted packet
-        }
-    }
-    state parse_falcon_end {
         pkt.extract(hdr.falcon);
         transition accept;
     }
-    state parse_falcon_resub_end {
-        pkt.extract(falcon_md.task_resub_hdr); // Extract data from previous pas
-        pkt.extract(hdr.falcon);
-        transition accept;
-    }
+    
 }
