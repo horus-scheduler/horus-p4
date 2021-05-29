@@ -30,10 +30,36 @@
 
 #define QUEUE_LEN_FIXED_POINT_SIZE 8
 
-// These are local per-rack values as ToR does not care about other racks
-struct worker_t {
-    bit<8> qlen;
-    bit<8> wid;
+
+#define MAX_VCLUSTERS 32
+#define MAX_WORKERS_PER_CLUSTER 16
+#define MAX_LEAFS_PER_CLUSTER 16
+
+#define MAX_WORKERS_IN_RACK 1024 
+#define MAX_LEAFS 1024
+
+// This defines the maximum queue length signals (for each vcluster) that a single spine would maintain (MAX_LEAFS/L_VALUE)
+#define MAX_LINKED_LEAFS 64 
+
+/* 
+ This limits the number of multicast groups available for selecting spines. Put log (base 2) of max groups here.
+ Max number of groups will be 2^MAX_BITS_UPSTREAM_MCAST_GROUP
+*/
+#define MAX_BITS_UPSTREAM_MCAST_GROUP 4
+
+#define MIRROR_TYPE_WORKER_RESPONSE 1
+#define MIRROR_TYPE_NEW_TASK 2
+
+#define RESUBMIT_TYPE_NEW_TASK 1
+
+typedef bit<8> queue_len_t;
+typedef bit<9> port_id_t;
+typedef bit<16> worker_id_t;
+typedef bit<16> leaf_id_t;
+typedef bit<16> switch_id_t;
+typedef bit<QUEUE_LEN_FIXED_POINT_SIZE> len_fixed_point_t;
+
+header empty_t {
 }
 
 header falcon_h {
@@ -58,7 +84,7 @@ struct eg_metadata_t {
 }
 
 header resub_hdr_t {
-    bit<16> udpate_worker_index; // This shows the index in qlen arrays to be updated
+    bit<16> udpate_ds_index; // This shows the index in qlen arrays to be updated
     //bit<16> dst_id; // This shows the wid to put in packet hdr (and forward based on this)
 }
 
@@ -68,30 +94,33 @@ struct falcon_metadata_t {
     bit<HDR_SRC_ID_SIZE> linked_iq_id;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> queue_len_unit; // (1/num_worekrs) for each vcluster
     bit<HDR_SRC_ID_SIZE> cluster_idle_count;
-    bit<16> idle_worker_index;
+    bit<16> idle_ds_index;
     bit<16> worker_index;
-    bit<16> cluster_worker_start_idx;
+    bit<16> cluster_ds_start_idx;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> aggregate_queue_len;
-    PortId_t egress_port;
     MulticastGroupId_t rand_probe_group;
     bit<16> cluster_num_valid_ds;
+    bit<16> cluster_num_valid_queue_signals;
     bit<16> random_downstream_id_1;
     bit<16> random_downstream_id_2;
-    bit<16> random_worker_index_1;
-    bit<16> random_worker_index_2;
+    bit<16> random_ds_index_1;
+    bit<16> random_ds_index_2;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_1;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_2;
 
-    bit<QUEUE_LEN_FIXED_POINT_SIZE> random_worker_qlen_1;
-    bit<QUEUE_LEN_FIXED_POINT_SIZE> random_worker_qlen_2;
-    bit<QUEUE_LEN_FIXED_POINT_SIZE> selected_worker_qlen;
-    bit<QUEUE_LEN_FIXED_POINT_SIZE> not_selected_worker_qlen;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> random_ds_qlen_1;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> random_ds_qlen_2;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> selected_ds_qlen;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> not_selected_ds_qlen;
     
-    bit<16> idle_worker_id;
+    bit<16> idle_ds_id;
     bit<8> selected_spine_iq_len;
     bit<8> last_iq_len;
 	bit<16> last_probed_id;
 	bit<16> spine_to_link_iq;
+	
+	bit<16> cluster_max_linked_leafs;
+	bit<16> mirror_dst_id; // Usage similar to hdr.dst_id but this is for mirroring
 	resub_hdr_t task_resub_hdr;
 }
 

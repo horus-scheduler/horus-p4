@@ -4,31 +4,7 @@
 #include "common/headers.p4"
 #include "common/util.p4"
 #include "headers.p4"
-#include "parser.p4"
 
-#define MAX_VCLUSTERS 32
-#define MAX_WORKERS_PER_CLUSTER 16
-
-#define MAX_WORKERS_IN_RACK 1024 
-/* 
- This limits the number of multicast groups available for selecting spines. Put log (base 2) of max groups here.
- Max number of groups will be 2^MAX_BITS_UPSTREAM_MCAST_GROUP
-*/
-#define MAX_BITS_UPSTREAM_MCAST_GROUP 4
-
-#define MIRROR_TYPE_WORKER_RESPONSE 1
-#define MIRROR_TYPE_NEW_TASK 2
-
-#define RESUBMIT_TYPE_NEW_TASK 1
-
-typedef bit<8> queue_len_t;
-typedef bit<9> port_id_t;
-typedef bit<16> worker_id_t;
-typedef bit<16> switch_id_t;
-typedef bit<QUEUE_LEN_FIXED_POINT_SIZE> len_fixed_point_t;
-
-header empty_t {
-}
 
 // TODO: Remove linked spine iq when new task comes and idlecount is 1
 /*
@@ -66,162 +42,162 @@ control LeafIngress(
             // TODO: Check Reg definition is _ correct?
             // idle list should be allocated to store MAX_VCLUSTER_RACK * MAX_IDLES_RACK
             Register<worker_id_t, _>(MAX_WORKERS_IN_RACK) idle_list;
-            RegisterAction<bit<16>, _, bit<16>>(idle_list) add_to_idle_list = {
-                void apply(inout bit<16> value, out bit<16> rv) {
-                    value = hdr.falcon.src_id;
-                    rv = value;
-                }
-            };
-            RegisterAction<bit<16>, _, bit<16>>(idle_list) read_idle_list = {
-                void apply(inout bit<16> value, out bit<16> rv) {
-                    rv = value;
-                }
-            };
-            Register<bit<16>, _>(MAX_VCLUSTERS) idle_count; // Stores idle count for each vcluster
-            RegisterAction<bit<16>, _, bit<16>>(idle_count) read_idle_count = { 
-                void apply(inout bit<16> value, out bit<16> rv) {
-                    rv = value; // Retruns val    
-                }
-            };
-            
-            /* TODO: Compare current value to avoid overflow
-             * Tofino Bug: Comparing value > MAX_VALUE(0xffff) returns always false!
-             * Possible Reason:https://community.intel.com/t5/Intel-Connectivity-Research/Modify-a-register-based-on-a-single-bit-of-its-current-value/m-p/1258877
-             * Comparison in SALU is converted to comparison with 0!
-             * e.g value > 0xffff translates to value - 0xffff > 0 which for unsigned bits results in a Bug!
-            */ 
-            RegisterAction<bit<16>, _, bit<16>>(idle_count) read_and_inc_idle_count = { 
-                void apply(inout bit<16> value, out bit<16> rv) {
-                    rv = value; // Retruns val before modificaiton
-                    value = value + 1; 
-                }
-            };
-            RegisterAction<bit<16>, _, bit<16>>(idle_count) read_and_dec_idle_count = { 
-                void apply(inout bit<16> value, out bit<16> rv) {
-                    if (value > 0) { 
+                RegisterAction<bit<16>, _, bit<16>>(idle_list) add_to_idle_list = {
+                    void apply(inout bit<16> value, out bit<16> rv) {
+                        value = hdr.falcon.src_id;
                         rv = value;
-                        value = value - 1;
                     }
-                }
-            };
-            
+                };
+                RegisterAction<bit<16>, _, bit<16>>(idle_list) read_idle_list = {
+                    void apply(inout bit<16> value, out bit<16> rv) {
+                        rv = value;
+                    }
+                };
 
+            Register<bit<16>, _>(MAX_VCLUSTERS) idle_count; // Stores idle count for each vcluster
+                RegisterAction<bit<16>, _, bit<16>>(idle_count) read_idle_count = { 
+                    void apply(inout bit<16> value, out bit<16> rv) {
+                        rv = value; // Retruns val    
+                    }
+                };
+                
+                /* TODO: Compare current value to avoid overflow
+                 * Tofino Bug: Comparing value > MAX_VALUE(0xffff) returns always false!
+                 * Possible Reason: https://community.intel.com/t5/Intel-Connectivity-Research/Modify-a-register-based-on-a-single-bit-of-its-current-value/m-p/1258877
+                 * Comparison in SALU is converted to comparison with 0!
+                 * e.g value < 0xffff translates to value - 0xffff < 0 which for unsigned bits results in a Bug!
+                */ 
+                RegisterAction<bit<16>, _, bit<16>>(idle_count) read_and_inc_idle_count = { 
+                    void apply(inout bit<16> value, out bit<16> rv) {
+                        rv = value; // Retruns val before modificaiton
+                        value = value + 1; 
+                    }
+                };
+                RegisterAction<bit<16>, _, bit<16>>(idle_count) read_and_dec_idle_count = { 
+                    void apply(inout bit<16> value, out bit<16> rv) {
+                        if (value > 0) { 
+                            rv = value;
+                            value = value - 1;
+                        }
+                    }
+                };
+            
             Register<queue_len_t, _>(MAX_WORKERS_IN_RACK) queue_len_list_1; // List of queue lens for all vclusters
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_1) inc_queue_len_list_1 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    value = value + 1;
-                    rv = value;
-                }
-            };
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_1) read_queue_len_list_1 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    rv = value;
-                }
-            };
-             RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_1) write_queue_len_list_1 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    value = hdr.falcon.qlen;
-                    rv = value;
-                }
-            };
+                RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_1) inc_queue_len_list_1 = {
+                    void apply(inout queue_len_t value, out queue_len_t rv) {
+                        value = value + 1;
+                        rv = value;
+                    }
+                };
+                RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_1) read_queue_len_list_1 = {
+                    void apply(inout queue_len_t value, out queue_len_t rv) {
+                        rv = value;
+                    }
+                };
+                 RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_1) write_queue_len_list_1 = {
+                    void apply(inout queue_len_t value, out queue_len_t rv) {
+                        value = hdr.falcon.qlen;
+                        rv = value;
+                    }
+                };
 
 
             Register<queue_len_t, _>(MAX_WORKERS_IN_RACK) queue_len_list_2; // List of queue lens for all vclusters
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_2) inc_queue_len_list_2 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    value = value + 1;
-                    rv = value;
-                }
-            };
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_2) read_queue_len_list_2 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    rv = value;
-                }
-            };
-            RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_2) write_queue_len_list_2 = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    value = hdr.falcon.qlen;
-                    rv = value;
-                }
-            };
+                RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_2) inc_queue_len_list_2 = {
+                    void apply(inout queue_len_t value, out queue_len_t rv) {
+                        value = value + 1;
+                        rv = value;
+                    }
+                };
+                RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_2) read_queue_len_list_2 = {
+                    void apply(inout queue_len_t value, out queue_len_t rv) {
+                        rv = value;
+                    }
+                };
+                RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_2) write_queue_len_list_2 = {
+                    void apply(inout queue_len_t value, out queue_len_t rv) {
+                        value = hdr.falcon.qlen;
+                        rv = value;
+                    }
+                };
 
             Register<queue_len_t, _>(MAX_VCLUSTERS) aggregate_queue_len_list; // One for each vcluster
-            RegisterAction<bit<8>, _, bit<8>>(aggregate_queue_len_list) update_read_aggregate_queue_len = {
-                void apply(inout bit<8> value, out bit<8> rv) {
-                    if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
-                        value = value + falcon_md.queue_len_unit;
-                    } else {
-                        value = value - falcon_md.queue_len_unit;
+                RegisterAction<bit<8>, _, bit<8>>(aggregate_queue_len_list) update_read_aggregate_queue_len = {
+                    void apply(inout bit<8> value, out bit<8> rv) {
+                        if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
+                            value = value + falcon_md.queue_len_unit;
+                        } else {
+                            value = value - falcon_md.queue_len_unit;
+                        }
+                        rv = value;
                     }
-                    rv = value;
-                }
-            };
-            RegisterAction<bit<8>, _, bit<8>>(aggregate_queue_len_list) read_aggregate_queue_len = {
-                void apply(inout bit<8> value, out bit<8> rv) {
-                    rv = value;
-                }
-            };
+                };
+                RegisterAction<bit<8>, _, bit<8>>(aggregate_queue_len_list) read_aggregate_queue_len = {
+                    void apply(inout bit<8> value, out bit<8> rv) {
+                        rv = value;
+                    }
+                };
             
             Register<switch_id_t, _>(MAX_VCLUSTERS) linked_iq_sched; // Spine that ToR has sent last IdleSignal (1 for each vcluster).
-            RegisterAction<bit<16>, _, bit<16>>(linked_iq_sched) read_reset_linked_iq  = {
-                void apply(inout bit<16> value, out bit<16> rv) {
-                    rv = value;
-                    value = 0xFFFF;
-                }
-            };
-            RegisterAction<bit<16>, _, bit<16>>(linked_iq_sched) write_linked_iq  = {
-                void apply(inout bit<16> value, out bit<16> rv) {
-                    rv = value;
-                    value = falcon_md.spine_to_link_iq;
-                }
-            };
+                RegisterAction<bit<16>, _, bit<16>>(linked_iq_sched) read_reset_linked_iq  = {
+                    void apply(inout bit<16> value, out bit<16> rv) {
+                        rv = value;
+                        value = 0xFFFF;
+                    }
+                };
+                RegisterAction<bit<16>, _, bit<16>>(linked_iq_sched) write_linked_iq  = {
+                    void apply(inout bit<16> value, out bit<16> rv) {
+                        rv = value;
+                        value = falcon_md.spine_to_link_iq;
+                    }
+                };
             
 
             Register<switch_id_t, _>(MAX_VCLUSTERS) linked_sq_sched; // Spine that ToR has sent last QueueSignal (1 for each vcluster).
-            RegisterAction<bit<16>, _, bit<16>>(linked_sq_sched) read_update_linked_sq  = {
-                void apply(inout bit<16> value, out bit<16> rv) {
-                    rv = value;
-                    if (value == 0xFFFF && hdr.falcon.pkt_type == PKT_TYPE_SCAN_QUEUE_SIGNAL) { // Not linked before and new SCAN request arrived
-                        value = hdr.falcon.src_id;
+                RegisterAction<bit<16>, _, bit<16>>(linked_sq_sched) read_update_linked_sq  = {
+                    void apply(inout bit<16> value, out bit<16> rv) {
+                        rv = value;
+                        if (value == 0xFFFF && hdr.falcon.pkt_type == PKT_TYPE_SCAN_QUEUE_SIGNAL) { // Not linked before and new SCAN request arrived
+                            value = hdr.falcon.src_id;
+                        }
                     }
-                }
-            };
-            RegisterAction<bit<16>, _, bit<16>>(linked_sq_sched) write_linked_sq  = {
-                void apply(inout bit<16> value, out bit<16> rv) {
-                    
-                }
-            };
-            RegisterAction<bit<16>, _, bit<16>>(linked_sq_sched) remove_linked_sq  = {
-                void apply(inout bit<16> value, out bit<16> rv) {
-                    value = 0xFFFF;
-                    rv = value;
-                }
-            };
+                };
+                RegisterAction<bit<16>, _, bit<16>>(linked_sq_sched) write_linked_sq  = {
+                    void apply(inout bit<16> value, out bit<16> rv) {
+                        
+                    }
+                };
+                RegisterAction<bit<16>, _, bit<16>>(linked_sq_sched) remove_linked_sq  = {
+                    void apply(inout bit<16> value, out bit<16> rv) {
+                        value = 0xFFFF;
+                        rv = value;
+                    }
+                };
 
             // Below are registers to hold state in middle of probing Idle list proceess. 
             // So we can compare them when second switch responds.
             Register<queue_len_t, _>(MAX_VCLUSTERS) spine_iq_len_1; // Length of Idle list for first probed spine (1 for each vcluster).
-            RegisterAction<queue_len_t, _, queue_len_t>(spine_iq_len_1) read_update_spine_iq_len_1  = {
-                void apply(inout queue_len_t value, out queue_len_t rv) {
-                    rv = value;
-                    if (value == 0xFF) { // Value==INVALID, So this is the first probe and we store the data
-                        value = hdr.falcon.qlen;
-                    } else { // Value found so this is the second probe and we load the data
-                        value = 0xFF;
+                RegisterAction<queue_len_t, _, queue_len_t>(spine_iq_len_1) read_update_spine_iq_len_1  = {
+                    void apply(inout queue_len_t value, out queue_len_t rv) {
+                        rv = value;
+                        if (value == 0xFF) { // Value==INVALID, So this is the first probe and we store the data
+                            value = hdr.falcon.qlen;
+                        } else { // Value found so this is the second probe and we load the data
+                            value = 0xFF;
+                        }
                     }
-                }
-            };
-            Register<switch_id_t, _>(MAX_VCLUSTERS) spine_probed_id; // ID of the first probed spine (1 for each vcluster)
-            RegisterAction<switch_id_t, _, switch_id_t>(spine_probed_id) read_update_spine_probed_id  = {
-                void apply(inout switch_id_t value, out switch_id_t rv) {
-                    rv = value;
-                    if (value == 0xFFFF) { // Value==INVALID, So this is the first probe and we store the data.
-                        value = hdr.falcon.src_id;
-                    } else { // Value found so this is the second probe and we load the data
-                        value = 0xFFFF;
+                };
+                Register<switch_id_t, _>(MAX_VCLUSTERS) spine_probed_id; // ID of the first probed spine (1 for each vcluster)
+                RegisterAction<switch_id_t, _, switch_id_t>(spine_probed_id) read_update_spine_probed_id  = {
+                    void apply(inout switch_id_t value, out switch_id_t rv) {
+                        rv = value;
+                        if (value == 0xFFFF) { // Value==INVALID, So this is the first probe and we store the data.
+                            value = hdr.falcon.src_id;
+                        } else { // Value found so this is the second probe and we load the data
+                            value = 0xFFFF;
+                        }
                     }
-                }
-            };
+                };
 
             
             /* 
@@ -232,16 +208,16 @@ control LeafIngress(
             Random<bit<16>>() random_worker_id_16;
 
             action get_worker_start_idx () {
-                falcon_md.cluster_worker_start_idx = (bit <16>) (hdr.falcon.cluster_id * MAX_WORKERS_PER_CLUSTER);
+                falcon_md.cluster_ds_start_idx = (bit <16>) (hdr.falcon.cluster_id * MAX_WORKERS_PER_CLUSTER);
             }
 
             // Calculates the index of next idle worker in idle_list array.
             action get_idle_index () {
-                falcon_md.idle_worker_index = falcon_md.cluster_worker_start_idx + (bit <16>) falcon_md.cluster_idle_count;
+                falcon_md.idle_ds_index = falcon_md.cluster_ds_start_idx + (bit <16>) falcon_md.cluster_idle_count;
             }
 
             action get_curr_idle_index() {
-                falcon_md.idle_worker_index = falcon_md.idle_worker_index -1;
+                falcon_md.idle_ds_index = falcon_md.idle_ds_index -1;
             }
 
             // action get_worker_index () {
@@ -252,7 +228,7 @@ control LeafIngress(
                 ig_intr_dprsr_md.drop_ctl = 0x1; // Drop packet.
             }
 
-            action act_set_queue_len_unit(len_fixed_point_t cluster_unit){
+            action act_set_queue_len_unit(len_fixed_point_t cluster_unit) {
                 falcon_md.queue_len_unit = cluster_unit;
             }
             table set_queue_len_unit {
@@ -352,48 +328,12 @@ control LeafIngress(
             }
 
             action offset_random_ids() {
-                falcon_md.random_downstream_id_1 = falcon_md.random_downstream_id_1 + falcon_md.cluster_worker_start_idx;
-                falcon_md.random_downstream_id_2 = falcon_md.random_downstream_id_2 + falcon_md.cluster_worker_start_idx;
+                falcon_md.random_downstream_id_1 = falcon_md.random_downstream_id_1 + falcon_md.cluster_ds_start_idx;
+                falcon_md.random_downstream_id_2 = falcon_md.random_downstream_id_2 + falcon_md.cluster_ds_start_idx;
             }
 
-            action act_random1_qlen1() {
-                falcon_md.random_worker_qlen_1 = falcon_md.worker_qlen_1;
-            }
-            action act_random1_qlen2() {
-                falcon_md.random_worker_qlen_1 = falcon_md.worker_qlen_2;
-            }
-            table assign_qlen_random1 {
-                key = {
-                    falcon_md.random_downstream_id_1 : exact;
-                }
-                actions = {
-                    act_random1_qlen1;
-                    act_random1_qlen2;
-                    NoAction;
-                }
-                size = 16;
-                default_action = NoAction;
-            }
-            action act_random2_qlen1() {
-                falcon_md.random_worker_qlen_2 = falcon_md.worker_qlen_1;
-            }
-            action act_random2_qlen2() {
-                falcon_md.random_worker_qlen_2 = falcon_md.worker_qlen_2;
-            }
-            table assign_qlen_random2 {
-                key = {
-                    falcon_md.random_downstream_id_2 : exact;
-                }
-                actions = {
-                    act_random2_qlen1;
-                    act_random2_qlen2;
-                    NoAction;
-                }
-                size = 16;
-                default_action = NoAction;
-            }
             action compare_queue_len() {
-                falcon_md.selected_worker_qlen = min(falcon_md.random_worker_qlen_1, falcon_md.random_worker_qlen_2);
+                falcon_md.selected_ds_qlen = min(falcon_md.random_ds_qlen_1, falcon_md.random_ds_qlen_2);
             }
 
             action compare_spine_iq_len() {
@@ -411,9 +351,9 @@ control LeafIngress(
 
                     if (ig_intr_md.resubmit_flag != 0) { // Special case: packet is resubmitted just update the indexes
                         @stage(4){
-                            inc_queue_len_list_1.execute(falcon_md.task_resub_hdr.udpate_worker_index);
-                            inc_queue_len_list_2.execute(falcon_md.task_resub_hdr.udpate_worker_index);
-                            hdr.falcon.dst_id = falcon_md.task_resub_hdr.udpate_worker_index;
+                            inc_queue_len_list_1.execute(falcon_md.task_resub_hdr.udpate_ds_index);
+                            inc_queue_len_list_2.execute(falcon_md.task_resub_hdr.udpate_ds_index);
+                            hdr.falcon.dst_id = falcon_md.task_resub_hdr.udpate_ds_index;
                         }
                     } else {
                         /**Stage 0
@@ -512,11 +452,11 @@ control LeafIngress(
                         */ 
                         @stage(3) {
                             if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE) { 
-                                add_to_idle_list.execute(falcon_md.idle_worker_index);
+                                add_to_idle_list.execute(falcon_md.idle_ds_index);
 
                             } else if(hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
                                 if (falcon_md.cluster_idle_count > 0) {
-                                    falcon_md.idle_worker_id = read_idle_list.execute(falcon_md.idle_worker_index);
+                                    falcon_md.idle_ds_id = read_idle_list.execute(falcon_md.idle_ds_index);
                                 } else {
                                     offset_random_ids();
                                 }
@@ -540,8 +480,8 @@ control LeafIngress(
                         */
                         @stage(4){
                         if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK && falcon_md.cluster_idle_count == 0) {
-                            falcon_md.random_worker_qlen_1 = read_queue_len_list_1.execute(falcon_md.random_downstream_id_1);
-                            falcon_md.random_worker_qlen_2 = read_queue_len_list_2.execute(falcon_md.random_downstream_id_2);
+                            falcon_md.random_ds_qlen_1 = read_queue_len_list_1.execute(falcon_md.random_downstream_id_1);
+                            falcon_md.random_ds_qlen_2 = read_queue_len_list_2.execute(falcon_md.random_downstream_id_2);
                         } else if(hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE) {
                             write_queue_len_list_1.execute(hdr.falcon.src_id);
                             write_queue_len_list_2.execute(hdr.falcon.src_id);
@@ -592,16 +532,16 @@ control LeafIngress(
                             // packet is in first pass
                             if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
                                 if (falcon_md.cluster_idle_count == 0) {
-                                    if (falcon_md.selected_worker_qlen == falcon_md.random_worker_qlen_1) {
-                                        falcon_md.task_resub_hdr.udpate_worker_index = falcon_md.random_downstream_id_1;
+                                    if (falcon_md.selected_ds_qlen == falcon_md.random_ds_qlen_1) {
+                                        falcon_md.task_resub_hdr.udpate_ds_index = falcon_md.random_downstream_id_1;
                                         hdr.falcon.dst_id = falcon_md.random_downstream_id_1;
                                     } else {
-                                        falcon_md.task_resub_hdr.udpate_worker_index = falcon_md.random_downstream_id_2;
+                                        falcon_md.task_resub_hdr.udpate_ds_index = falcon_md.random_downstream_id_2;
                                         hdr.falcon.dst_id = falcon_md.random_downstream_id_1;
                                     }
                                     ig_intr_dprsr_md.resubmit_type = RESUBMIT_TYPE_NEW_TASK;
                                 } else {
-                                    hdr.falcon.dst_id = falcon_md.idle_worker_id;
+                                    hdr.falcon.dst_id = falcon_md.idle_ds_id;
                                 }
                             }
                             

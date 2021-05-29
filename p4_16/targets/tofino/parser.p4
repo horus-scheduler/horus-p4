@@ -19,11 +19,10 @@ parser FalconIngressParser (
         falcon_md.linked_sq_id = 0xFF;
         falcon_md.queue_len_unit = 0;
         falcon_md.cluster_idle_count = 0;   
-        falcon_md.idle_worker_index = 0;   
+        falcon_md.idle_ds_index = 0;   
         falcon_md.worker_index = 0;  
-        falcon_md.cluster_worker_start_idx=0;
+        falcon_md.cluster_ds_start_idx=0;
         falcon_md.rand_probe_group = 0;
-        falcon_md.egress_port = 0;
         falcon_md.aggregate_queue_len = 0;
         falcon_md.random_downstream_id_1 = 0;
         falcon_md.random_downstream_id_2 = 0;
@@ -35,9 +34,9 @@ parser FalconIngressParser (
     //     falcon_md.linked_sq_id = 0xFF;
     //     falcon_md.queue_len_unit = 0;
     //     falcon_md.cluster_idle_count = 0;   
-    //     falcon_md.idle_worker_index = 0;   
+    //     falcon_md.idle_ds_index = 0;   
     //     falcon_md.worker_index = 0;  
-    //     falcon_md.cluster_worker_start_idx=0;
+    //     falcon_md.cluster_ds_start_idx=0;
     //     falcon_md.rand_probe_group = 0;
     //     falcon_md.egress_port = 0;
     //     falcon_md.aggregate_queue_len = 0;
