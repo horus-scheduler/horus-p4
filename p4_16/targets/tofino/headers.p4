@@ -18,6 +18,7 @@
 #define PKT_TYPE_PROBE_IDLE_QUEUE 8
 #define PKT_TYPE_PROBE_IDLE_RESPONSE 9
 #define PKT_TYPE_IDLE_REMOVE 10
+#define PKT_TYPE_QUEUE_SIGNAL_INIT 11
 
 #define HDR_PKT_TYPE_SIZE 8
 #define HDR_CLUSTER_ID_SIZE 16
@@ -40,6 +41,8 @@
 
 // This defines the maximum queue length signals (for each vcluster) that a single spine would maintain (MAX_LEAFS/L_VALUE)
 #define MAX_LINKED_LEAFS 64 
+// This is the total length of array (shared between vclusters) for tracking leaf queue lengths
+#define MAX_TOTAL_LEAFS  8192 
 
 /* 
  This limits the number of multicast groups available for selecting spines. Put log (base 2) of max groups here.
@@ -89,11 +92,10 @@ header resub_hdr_t {
 }
 
 struct falcon_metadata_t {
-    
     bit<HDR_SRC_ID_SIZE> linked_sq_id;
     bit<HDR_SRC_ID_SIZE> linked_iq_id;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> queue_len_unit; // (1/num_worekrs) for each vcluster
-    bit<HDR_SRC_ID_SIZE> cluster_idle_count;
+    bit<8> cluster_idle_count;
     bit<16> idle_ds_index;
     bit<16> worker_index;
     bit<16> cluster_ds_start_idx;
@@ -113,6 +115,7 @@ struct falcon_metadata_t {
     bit<QUEUE_LEN_FIXED_POINT_SIZE> selected_ds_qlen;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> not_selected_ds_qlen;
     
+    bit<16> cluster_absolute_leaf_index;
     bit<16> idle_ds_id;
     bit<8> selected_spine_iq_len;
     bit<8> last_iq_len;
@@ -121,6 +124,7 @@ struct falcon_metadata_t {
 	
 	bit<16> cluster_max_linked_leafs;
 	bit<16> mirror_dst_id; // Usage similar to hdr.dst_id but this is for mirroring
+	bit<16> lid_ds_index;
 	resub_hdr_t task_resub_hdr;
 }
 
