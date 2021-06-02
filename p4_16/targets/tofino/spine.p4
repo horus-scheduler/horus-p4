@@ -57,20 +57,20 @@ control SpineIngress(
             }
         };
 
-    Register<queue_len_t, _>(MAX_VCLUSTERS) idle_count; // Stores idle count for each vcluster
-        RegisterAction<queue_len_t, _, queue_len_t>(idle_count) read_idle_count = { 
-            void apply(inout queue_len_t value, out queue_len_t rv) {
+    Register<bit<16>, _>(MAX_VCLUSTERS) idle_count; // Stores idle count for each vcluster
+        RegisterAction<bit<16>, _, bit<16>>(idle_count) read_idle_count = { 
+            void apply(inout bit<16> value, out bit<16> rv) {
                 rv = value; // Retruns val    
             }
         };
-        RegisterAction<queue_len_t, _, queue_len_t>(idle_count) read_and_inc_idle_count = { 
-            void apply(inout queue_len_t value, out queue_len_t rv) {
+        RegisterAction<bit<16>, _, bit<16>>(idle_count) read_and_inc_idle_count = { 
+            void apply(inout bit<16> value, out bit<16> rv) {
                 rv = value; // Retruns val before modificaiton
                 value = value + 1; 
             }
         };
-        RegisterAction<queue_len_t, _, queue_len_t>(idle_count) read_and_dec_idle_count = { 
-            void apply(inout queue_len_t value, out queue_len_t rv) {
+        RegisterAction<bit<16>, _, bit<16>>(idle_count) read_and_dec_idle_count = { 
+            void apply(inout bit<16> value, out bit<16> rv) {
                 if (value > 0) { 
                     rv = value;
                     value = value - 1;
@@ -167,12 +167,10 @@ control SpineIngress(
         falcon_md.cluster_ds_start_idx = (bit <16>) (hdr.falcon.cluster_id * MAX_LEAFS_PER_CLUSTER);
     }
     action get_array_indices () {
-        falcon_md.idle_ds_index = falcon_md.cluster_ds_start_idx + (bit <16>) falcon_md.cluster_idle_count;
-        falcon_md.lid_ds_index = falcon_md.cluster_ds_start_idx + (bit <16>) falcon_md.cluster_num_valid_queue_signals;
-        falcon_md.cluster_absolute_leaf_index = falcon_md.cluster_ds_start_idx + (bit<16>) hdr.falcon.src_id;
+        falcon_md.idle_ds_index = falcon_md.cluster_ds_start_idx + falcon_md.cluster_idle_count;
+        falcon_md.lid_ds_index = falcon_md.cluster_ds_start_idx + falcon_md.cluster_num_valid_queue_signals;
+        falcon_md.cluster_absolute_leaf_index = falcon_md.cluster_ds_start_idx + hdr.falcon.src_id;
     }
-
-
 
     action decrement_indices() {
         falcon_md.idle_ds_index = falcon_md.idle_ds_index -1;
@@ -293,9 +291,18 @@ control SpineIngress(
     action convert_pkt_to_scan_queue() {
         hdr.falcon.pkt_type = PKT_TYPE_SCAN_QUEUE_SIGNAL; 
     }
+
+    action convert_pkt_to_probe_idle_resp() {
+        hdr.falcon.pkt_type = PKT_TYPE_PROBE_IDLE_RESPONSE;  // Change packet type
+        hdr.falcon.qlen = (bit<8>) falcon_md.cluster_idle_count; // Get num_idles for reporting to leaf
+        hdr.falcon.dst_id = hdr.falcon.src_id; // Send back to leaf that sent the probe
+    }
     
     action compare_queue_len() {
         falcon_md.selected_ds_qlen = min(falcon_md.random_ds_qlen_1, falcon_md.random_ds_qlen_2);
+    }
+    action calculate_num_signals(){
+        falcon_md.num_additional_signal_needed = falcon_md.cluster_max_linked_leafs - falcon_md.cluster_num_valid_queue_signals;
     }
 
     // This gives us the 1/#workers for each leaf switch in each vcluster 
@@ -332,121 +339,143 @@ control SpineIngress(
              * get_leaf_start_idx
              * gen_random_leaf_index_16
             */
-        //     @stage(0){
-        //         get_leaf_start_idx ();
-        //         get_cluster_num_valid_leafs.apply();
-        //         gen_random_leaf_index_16();
-        //         if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
-        //             falcon_md.cluster_idle_count = read_idle_count.execute(hdr.falcon.cluster_id); // Get num_idle leafs (pointer to top of stack)
-        //             falcon_md.cluster_num_valid_queue_signals = read_queue_signal_count.execute(hdr.falcon.cluster_id); // How many queue signals available
-        //         } else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_SIGNAL) {
-        //             falcon_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.falcon.cluster_id);
-        //             reset_queue_signal_count.execute(hdr.falcon.cluster_id);
-        //         } else if (hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_QUEUE){
-        //             hdr.falcon.qlen = read_idle_count.execute(hdr.falcon.cluster_id); // Get num_idles for reporting to leaf
-        //             hdr.falcon.pkt_type = PKT_TYPE_PROBE_IDLE_RESPONSE;  // Change packet type
-        //             hdr.falcon.dst_id = hdr.falcon.src_id; // Send back to leaf that sent the probe
-        //         } else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE){
-        //             read_and_dec_idle_count.execute(hdr.falcon.cluster_id);
-        //         } else if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL_INIT){
-        //             falcon_md.cluster_num_valid_queue_signals = read_and_inc_queue_signal_count.execute(hdr.falcon.cluster_id);
-        //         }
-        //     }
+        if (hdr.falcon.dst_id == SWITCH_ID) { // If this packet is destined for this spine do falcon processing ot. its just an intransit packet we need to forward on correct port
+            @stage(0) {
+                get_leaf_start_idx ();
+                get_cluster_num_valid_leafs.apply();
+                gen_random_leaf_index_16();
+            
+                if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK || hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_QUEUE) {
+                    falcon_md.cluster_idle_count = read_idle_count.execute(hdr.falcon.cluster_id); // Get num_idle leafs (pointer to top of stack)
+                    falcon_md.cluster_num_valid_queue_signals = read_queue_signal_count.execute(hdr.falcon.cluster_id); // How many queue signals available
+                } else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_SIGNAL) {
+                    falcon_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.falcon.cluster_id);
+                    reset_queue_signal_count.execute(hdr.falcon.cluster_id);
+                }  else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE) {
+                    falcon_md.cluster_idle_count = read_and_dec_idle_count.execute(hdr.falcon.cluster_id);
+                    
+                } else if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL_INIT) {
+                    falcon_md.cluster_num_valid_queue_signals = read_and_inc_queue_signal_count.execute(hdr.falcon.cluster_id);
+                }
+            }
 
-        // @stage(1){
-        //     get_array_indices();
-        //     if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK){
-        //         if (falcon_md.cluster_idle_count > 0) {
-        //             decrement_indices(); // decrement the index so we read the correct idle leaf ID
-        //             hdr.falcon.dst_id = read_idle_list.execute(falcon_md.idle_ds_index);
+            @stage(1) {
+                get_array_indices();
+                if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE) {
+                    if (falcon_md.cluster_idle_count == 0) { // No more idle info so we ask for the queue length signals
+                        set_broadcast_group();
+                    }
+                }
+            }
+
+            @stage(2) {
+                if (falcon_md.cluster_num_valid_queue_signals > 1) {
+                    adjust_random_range_sq_leafs.apply(); //  We want to select a random worker from available qlen signals
+                } else {
+                    adjust_random_range_all_leafs.apply(); // We want to select a random worker from all workers
+                }
+                if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK){
+                    decrement_indices(); // decrement the index so we read the correct idle leaf ID
+                }
+            }
+
+            @stage(3) {
+                if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
+                    falcon_md.random_downstream_id_1 = read_lid_list_1.execute(falcon_md.random_ds_index_1); // Read the leaf ID 1 from list1
+                    falcon_md.random_downstream_id_2 = read_lid_list_2.execute(falcon_md.random_ds_index_2); // Read the leaf ID 2 from list2
+                    falcon_md.idle_ds_id = read_idle_list.execute(falcon_md.idle_ds_index);
+                }
+                else if(hdr.falcon.pkt_type == PKT_TYPE_IDLE_SIGNAL) {
+                    add_to_idle_list.execute(falcon_md.idle_ds_index);
+                } else if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL_INIT) {
+                    add_to_lid_list_1.execute(falcon_md.lid_ds_index); // Write src_id to next available leaf id array index
+                    add_to_lid_list_2.execute(falcon_md.lid_ds_index);   
+                }
+            }
+
+            @stage(4) {
+                if(hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
+                    if (ig_intr_md.resubmit_flag == 0) { // First pass
+                        falcon_md.random_ds_qlen_1 = read_queue_len_list_1.execute(falcon_md.random_downstream_id_1); // Read qlen for leafID1
+                        falcon_md.random_ds_qlen_2 = read_queue_len_list_2.execute(falcon_md.random_downstream_id_2); // Read qlen for leafID2
+                    } else { // Second pass, resubmitted packet
+                        inc_queue_len_list_1.execute(falcon_md.task_resub_hdr.udpate_ds_index);
+                        inc_queue_len_list_2.execute(falcon_md.task_resub_hdr.udpate_ds_index);
+                        hdr.falcon.dst_id = falcon_md.task_resub_hdr.udpate_ds_index;
+                    }
+                } else if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL_INIT || hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL){
+                    write_queue_len_list_1.execute(falcon_md.cluster_absolute_leaf_index); // Write the qlen at corresponding index for the leaf in this cluster
+                    write_queue_len_list_2.execute(falcon_md.cluster_absolute_leaf_index); // Write the qlen at corresponding index for the leaf in this cluster
+                }
+            }
+
+            @stage(5) {
+                compare_queue_len();
+                calculate_num_signals();
+            }
+
+            @stage(6) {
+                if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK){
+                    if (falcon_md.selected_ds_qlen == falcon_md.random_ds_qlen_1) {
+                        falcon_md.task_resub_hdr.udpate_ds_index = falcon_md.random_downstream_id_1;
+                    } else {
+                        falcon_md.task_resub_hdr.udpate_ds_index = falcon_md.random_downstream_id_2;
+                        //falcon_md.mirror_dst_id = falcon_md.random_downstream_id_2;
+                    }
+                    ig_intr_dprsr_md.resubmit_type = RESUBMIT_TYPE_NEW_TASK;
+                }
+            }
+
+            @stage(7) {
+                if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
+                    if (falcon_md.num_additional_signal_needed > 0) { // Spine still needs to collect more queue length signals
+                        hdr.falcon.dst_id = falcon_md.mirror_dst_id; // No need for mirroring, just set dst_id
+                    }
+                } else if (hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_QUEUE) {
+                    // had to put changes in an action "convert_pkt_to_probe_idle_resp()" without this the p4i shows only the first hdr modification!
+                    // Not sure why but other lines get eliminated and not placed by the compiler! TODO: Check in tests, bug report to community.
+                    convert_pkt_to_probe_idle_resp();
+                } else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE) {
+                    if (falcon_md.cluster_idle_count == 0) { // No more idle info so we ask for the queue length signals
+                        convert_pkt_to_scan_queue();
+                    }
+                }
+                hdr.falcon.src_id = SWITCH_ID;
+            }
+
+        // if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
+            
+        //     if (falcon_md.cluster_idle_count > 0) { // Spine knows about some idle leafs 
+                
+        //     } else {
+                
+        //         if (falcon_md.cluster_num_valid_ds < MAX_LINKED_LEAFS) { // Spine still needs to collect more queue length signals
+        //             convert_pkt_to_scan_queue();
+        //             set_broadcast_group(); // TODO: Ctrl plane design: random probing using mcast groups, 
+        //             ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_NEW_TASK; // Mirroring the task pkt to selected leaf for scheduling, modify original packet for sending scan probe
         //         } else {
-        //             if (falcon_md.cluster_num_valid_queue_signals > 1) {
-
-        //             }
+                    
         //         }
         //     }
         // }
-
-
-
-        if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
-            @stage(0){
-            falcon_md.cluster_idle_count = read_idle_count.execute(hdr.falcon.cluster_id); // Get num_idle leafs (pointer to top of stack)
-            falcon_md.cluster_num_valid_queue_signals = read_queue_signal_count.execute(hdr.falcon.cluster_id); // How many queue signals available
-            }
-            @stage(1){
-                get_array_indices();
-            }
-            if (falcon_md.cluster_idle_count > 0) { // Spine knows about some idle leafs 
-                @stage(2){
-                    decrement_indices(); // decrement the index so we read the correct idle leaf ID
-                    hdr.falcon.dst_id = read_idle_list.execute(falcon_md.idle_ds_index);
-                }
-            } else {
-                gen_random_leaf_index_16();
-                
-                if (falcon_md.cluster_num_valid_queue_signals > 1) {
-                        adjust_random_range_sq_leafs.apply(); //  We want to select a random worker from available qlen signals
-                        falcon_md.random_downstream_id_1 = read_lid_list_1.execute(falcon_md.random_ds_index_1); // Read the leaf ID 1 from list1
-                        falcon_md.random_downstream_id_2 = read_lid_list_2.execute(falcon_md.random_ds_index_2); // Read the leaf ID 2 from list2
-                        falcon_md.random_ds_qlen_1 = read_queue_len_list_1.execute(falcon_md.random_downstream_id_1); // Read qlen for leafID1
-                        falcon_md.random_ds_qlen_2 = read_queue_len_list_2.execute(falcon_md.random_downstream_id_2); // Read qlen for leafID2
-                        compare_queue_len();
-                    if (falcon_md.selected_ds_qlen == falcon_md.random_ds_qlen_1) {
-                        falcon_md.task_resub_hdr.udpate_ds_index = falcon_md.random_downstream_id_1;
-                        falcon_md.mirror_dst_id = falcon_md.random_downstream_id_1;
-                    } else {
-                        falcon_md.task_resub_hdr.udpate_ds_index = falcon_md.random_downstream_id_2;
-                        falcon_md.mirror_dst_id = falcon_md.random_downstream_id_2;
-                    }
-                } else {
-                    adjust_random_range_all_leafs.apply(); // We want to select a random worker from all workers
-                    falcon_md.mirror_dst_id = falcon_md.random_ds_index_1; // this meta now holds the ID of a random worker
-                } 
-                if (falcon_md.cluster_num_valid_ds < MAX_LINKED_LEAFS) { // Spine still needs to collect more queue length signals
-                    convert_pkt_to_scan_queue();
-                    set_broadcast_group(); // TODO: Ctrl plane design: random probing using mcast groups, 
-                    ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_NEW_TASK; // Mirroring the task pkt to selected leaf for scheduling, modify original packet for sending scan probe
-                } else {
-                    hdr.falcon.dst_id = falcon_md.mirror_dst_id; // No need for mirroring, just set dst_id
-                }
-            }
-        } else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_SIGNAL) {
-            falcon_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.falcon.cluster_id);
-            get_array_indices();
-            reset_queue_signal_count.execute(hdr.falcon.cluster_id);
-            add_to_idle_list.execute(falcon_md.idle_ds_index);
-        } else if (hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_QUEUE) {
-            hdr.falcon.qlen = read_idle_count.execute(hdr.falcon.cluster_id); // Get num_idles for reporting to leaf
-            hdr.falcon.pkt_type = PKT_TYPE_PROBE_IDLE_RESPONSE;  // Change packet type
-            hdr.falcon.dst_id = hdr.falcon.src_id; // Send back to leaf that sent the probe
-        } else if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL_INIT) {
-            falcon_md.cluster_num_valid_queue_signals = read_and_inc_queue_signal_count.execute(hdr.falcon.cluster_id);
-            get_array_indices();
-            add_to_lid_list_1.execute(falcon_md.lid_ds_index); // Write src_id to next available leaf id array index
-            add_to_lid_list_2.execute(falcon_md.lid_ds_index);   
-            write_queue_len_list_1.execute(falcon_md.cluster_absolute_leaf_index); // Write the qlen at corresponding index for the leaf in this cluster
-            write_queue_len_list_2.execute(falcon_md.cluster_absolute_leaf_index);
-        } else if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL) {
-            get_array_indices();
-            write_queue_len_list_1.execute(falcon_md.cluster_absolute_leaf_index); // Write the updated qlen at corresponding index for the leaf in this cluster
-            write_queue_len_list_2.execute(falcon_md.cluster_absolute_leaf_index);
-        } else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE) {
-            // TODO: For now, leaf will only send back IDLE_REMOVE to the spine as reply. 
-            // Sometimes, We need to remove the switch with <src_id> from the idle list of the linked_iq as a result of random tasks.
-            //  but don't have access to its index at spine.
-            // Here we pop the most recent from stack. This also has a concurrency bug!
-            // As a workaround: Spine stores the array index of the idle leafs. When receives idle_remove, marks that index (e.g 0b1). 
-            // When assining tasks using idle leaf signal, it checks the leaf's index in that array, If the mark shows removed, it should havae been removed and it was a mistake so recirculate the packet and decrement the count 
-
-            read_and_dec_idle_count.execute(hdr.falcon.cluster_id);
-        }            
+        // else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE) {
+        //     // TODO: For now, leaf will only send back IDLE_REMOVE to the spine as reply. 
+        //     // Sometimes, We need to remove the switch with <src_id> from the idle list of the linked_iq as a result of random tasks.
+        //     //  but don't have access to its index at spine.
+        //     // Here we pop the most recent from stack. This also has a concurrency bug!
+        //     // As a workaround: Spine stores the array index of the idle leafs. When receives idle_remove, marks that index (e.g 0b1). 
+        //     // When assining tasks using idle leaf signal, it checks the leaf's index in that array, If the mark shows removed, it should havae been removed and it was a mistake so recirculate the packet and decrement the count 
+        //     @stage(0){
+        //     read_and_dec_idle_count.execute(hdr.falcon.cluster_id);
+        //     }
+        // }            
 
         // /** Stage 5
         //  * 
         // */
-
-        hdr.falcon.src_id = SWITCH_ID;
+        
+        }
+        
         forward_falcon_switch_dst.apply();
             
         } else if (hdr.ipv4.isValid()) { // Regular switching procedure

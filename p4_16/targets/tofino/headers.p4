@@ -95,7 +95,7 @@ struct falcon_metadata_t {
     bit<HDR_SRC_ID_SIZE> linked_sq_id;
     bit<HDR_SRC_ID_SIZE> linked_iq_id;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> queue_len_unit; // (1/num_worekrs) for each vcluster
-    bit<8> cluster_idle_count;
+    bit<16> cluster_idle_count;
     bit<16> idle_ds_index;
     bit<16> worker_index;
     bit<16> cluster_ds_start_idx;
@@ -121,7 +121,8 @@ struct falcon_metadata_t {
     bit<8> last_iq_len;
 	bit<16> last_probed_id;
 	bit<16> spine_to_link_iq;
-	
+	bit<16> received_src_id;
+	bit<16> num_additional_signal_needed;
 	bit<16> cluster_max_linked_leafs;
 	bit<16> mirror_dst_id; // Usage similar to hdr.dst_id but this is for mirroring
 	bit<16> lid_ds_index;
