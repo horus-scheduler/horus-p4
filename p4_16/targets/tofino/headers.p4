@@ -54,6 +54,7 @@
 #define MIRROR_TYPE_NEW_TASK 2
 
 #define RESUBMIT_TYPE_NEW_TASK 1
+#define RESUBMIT_TYPE_IDLE_REMOVE 2
 
 typedef bit<8> queue_len_t;
 typedef bit<9> port_id_t;
@@ -86,16 +87,22 @@ struct eg_metadata_t {
 
 }
 
-header resub_hdr_t {
-    bit<16> udpate_ds_index; // This shows the index in qlen arrays to be updated
+header task_resub_hdr_t {
+    bit<16> udpate_ds_index; // This shows the index to be updated
+    bit<16> udpate_ds_value; // This shows the value to be written 
     //bit<16> dst_id; // This shows the wid to put in packet hdr (and forward based on this)
+}
+
+header remove_resub_hdr_t {
+    bit<16> removed_position; // This shows the index to be updated in idle list
+    bit<16> list_top_leaf; // This shows the value to be written in the previously removed position
 }
 
 struct falcon_metadata_t {
     bit<HDR_SRC_ID_SIZE> linked_sq_id;
     bit<HDR_SRC_ID_SIZE> linked_iq_id;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> queue_len_unit; // (1/num_worekrs) for each vcluster
-    bit<16> cluster_idle_count;
+    bit<8> cluster_idle_count;
     bit<16> idle_ds_index;
     bit<16> worker_index;
     bit<16> cluster_ds_start_idx;
@@ -126,7 +133,10 @@ struct falcon_metadata_t {
 	bit<16> cluster_max_linked_leafs;
 	bit<16> mirror_dst_id; // Usage similar to hdr.dst_id but this is for mirroring
 	bit<16> lid_ds_index;
-	resub_hdr_t task_resub_hdr;
+	bit<16> idle_id_to_write;
+	task_resub_hdr_t task_resub_hdr;
+	remove_resub_hdr_t remove_resub_hdr;
+	bit<8> idle_len_8bit;
 }
 
 

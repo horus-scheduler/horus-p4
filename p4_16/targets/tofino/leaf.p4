@@ -54,9 +54,9 @@ control LeafIngress(
                     }
                 };
 
-            Register<bit<16>, _>(MAX_VCLUSTERS) idle_count; // Stores idle count for each vcluster
-                RegisterAction<bit<16>, _, bit<16>>(idle_count) read_idle_count = { 
-                    void apply(inout bit<16> value, out bit<16> rv) {
+            Register<bit<8>, _>(MAX_VCLUSTERS) idle_count; // Stores idle count for each vcluster
+                RegisterAction<bit<8>, _, bit<8>>(idle_count) read_idle_count = { 
+                    void apply(inout bit<8> value, out bit<8> rv) {
                         rv = value; // Retruns val    
                     }
                 };
@@ -67,14 +67,14 @@ control LeafIngress(
                  * Comparison in SALU is converted to comparison with 0!
                  * e.g value < 0xffff translates to value - 0xffff < 0 which for unsigned bits results in a Bug!
                 */ 
-                RegisterAction<bit<16>, _, bit<16>>(idle_count) read_and_inc_idle_count = { 
-                    void apply(inout bit<16> value, out bit<16> rv) {
+                RegisterAction<bit<8>, _, bit<8>>(idle_count) read_and_inc_idle_count = { 
+                    void apply(inout bit<8> value, out bit<8> rv) {
                         rv = value; // Retruns val before modificaiton
                         value = value + 1; 
                     }
                 };
-                RegisterAction<bit<16>, _, bit<16>>(idle_count) read_and_dec_idle_count = { 
-                    void apply(inout bit<16> value, out bit<16> rv) {
+                RegisterAction<bit<8>, _, bit<8>>(idle_count) read_and_dec_idle_count = { 
+                    void apply(inout bit<8> value, out bit<8> rv) {
                         if (value > 0) { 
                             rv = value;
                             value = value - 1;
