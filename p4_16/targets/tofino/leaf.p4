@@ -83,9 +83,9 @@ control LeafIngress(
                 };
             
             Register<queue_len_t, _>(MAX_WORKERS_IN_RACK) queue_len_list_1; // List of queue lens for all vclusters
-                RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_1) inc_queue_len_list_1 = {
+                RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_1) update_queue_len_list_1 = {
                     void apply(inout queue_len_t value, out queue_len_t rv) {
-                        value = value + 1;
+                        value = falcon_md.selected_ds_qlen;
                         rv = value;
                     }
                 };
@@ -103,9 +103,9 @@ control LeafIngress(
 
 
             Register<queue_len_t, _>(MAX_WORKERS_IN_RACK) queue_len_list_2; // List of queue lens for all vclusters
-                RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_2) inc_queue_len_list_2 = {
+                RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_2) update_queue_len_list_2 = {
                     void apply(inout queue_len_t value, out queue_len_t rv) {
-                        value = value + 1;
+                        value = falcon_md.selected_ds_qlen;
                         rv = value;
                     }
                 };
@@ -117,6 +117,42 @@ control LeafIngress(
                 RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_2) write_queue_len_list_2 = {
                     void apply(inout queue_len_t value, out queue_len_t rv) {
                         value = hdr.falcon.qlen;
+                        rv = value;
+                    }
+                };
+
+            Register<queue_len_t, _>(MAX_WORKERS_IN_RACK) deferred_queue_len_list_1; // List of queue lens for all vclusters
+                RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_1) check_deferred_queue_len_list_1 = {
+                    void apply(inout queue_len_t value, out queue_len_t rv) {
+                        if (value < falcon_md.queue_len_diff) { // Queue len drift is not large enough to invalidate the decision
+                            value = value + 1;
+                            rv = 0;
+                        } else {
+                            rv = value + falcon_md.selected_ds_qlen; // to avoid using another stage for this calculation
+                        }
+                    }
+                };
+                 RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_1) reset_deferred_queue_len_list_1 = {
+                    void apply(inout queue_len_t value, out queue_len_t rv) {
+                        value = 0;
+                        rv = value;
+                    }
+                };
+            Register<queue_len_t, _>(MAX_WORKERS_IN_RACK) deferred_queue_len_list_2; // List of queue lens for all vclusters
+                RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_2) inc_deferred_queue_len_list_2 = {
+                    void apply(inout queue_len_t value, out queue_len_t rv) {
+                        value = value + 1;
+                        rv = value;
+                    }
+                };
+                RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_2) read_deferred_queue_len_list_2 = {
+                    void apply(inout queue_len_t value, out queue_len_t rv) {
+                        rv = value + falcon_md.not_selected_ds_qlen;
+                    }
+                };
+                 RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_2) reset_deferred_queue_len_list_2 = {
+                    void apply(inout queue_len_t value, out queue_len_t rv) {
+                        value = 0;
                         rv = value;
                     }
                 };
@@ -335,6 +371,16 @@ control LeafIngress(
             action compare_queue_len() {
                 falcon_md.selected_ds_qlen = min(falcon_md.random_ds_qlen_1, falcon_md.random_ds_qlen_2);
             }
+            action compare_correct_queue_len() {
+                falcon_md.min_correct_qlen = min(falcon_md.task_resub_hdr.qlen_1, falcon_md.task_resub_hdr.qlen_2);
+            }
+            action get_larger_queue_len() {
+                falcon_md.not_selected_ds_qlen = max(falcon_md.random_ds_qlen_1, falcon_md.random_ds_qlen_2);
+            }
+            
+            action calculate_queue_len_diff(){
+                falcon_md.queue_len_diff = falcon_md.not_selected_ds_qlen - falcon_md.selected_ds_qlen;
+            }
 
             action compare_spine_iq_len() {
                 falcon_md.selected_spine_iq_len = min(falcon_md.last_iq_len, hdr.falcon.qlen);
@@ -350,10 +396,28 @@ control LeafIngress(
                 if (hdr.falcon.isValid()) {  // Falcon packet
 
                     if (ig_intr_md.resubmit_flag != 0) { // Special case: packet is resubmitted just update the indexes
+                        @stage(0){
+                            compare_correct_queue_len();
+                        }
+                        @stage(1){
+                            if (falcon_md.min_correct_qlen == falcon_md.task_resub_hdr.qlen_1) {
+                                hdr.falcon.dst_id = falcon_md.task_resub_hdr.ds_index_1;
+                                falcon_md.selected_ds_qlen = falcon_md.task_resub_hdr.qlen_1;
+                            } else {
+                                hdr.falcon.dst_id = falcon_md.task_resub_hdr.ds_index_2;
+                                falcon_md.selected_ds_qlen = falcon_md.task_resub_hdr.qlen_2;
+                            }
+                        }
                         @stage(4){
-                            inc_queue_len_list_1.execute(falcon_md.task_resub_hdr.udpate_ds_index);
-                            inc_queue_len_list_2.execute(falcon_md.task_resub_hdr.udpate_ds_index);
-                            hdr.falcon.dst_id = falcon_md.task_resub_hdr.udpate_ds_index;
+                            update_queue_len_list_1.execute(hdr.falcon.dst_id);
+                            update_queue_len_list_2.execute(hdr.falcon.dst_id);
+                        }
+                        @stage(7){
+                            reset_deferred_queue_len_list_1.execute(hdr.falcon.dst_id); // Just updated the queue_len_list so write 0 on deferred reg
+                            
+                        }
+                        @stage(8){
+                            reset_deferred_queue_len_list_2.execute(hdr.falcon.dst_id);
                         }
                     } else {
                         /**Stage 0
@@ -379,7 +443,6 @@ control LeafIngress(
                         } else {
                             falcon_md.linked_sq_id = read_update_linked_sq.execute(hdr.falcon.cluster_id);
                         }
-                        
 
                         /**Stage 1
                          * get_idle_index, dep: get_worker_start_idx @st0, idle_count @st 0
@@ -521,6 +584,7 @@ control LeafIngress(
                         // packet is resubmitted
                         if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK && falcon_md.cluster_idle_count == 0) {
                             compare_queue_len();
+                            get_larger_queue_len();
                         }
                         
                         }
@@ -530,20 +594,33 @@ control LeafIngress(
                         */
                         @stage(6) {
                             // packet is in first pass
+                            calculate_queue_len_diff();
                             if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
                                 if (falcon_md.cluster_idle_count == 0) {
                                     if (falcon_md.selected_ds_qlen == falcon_md.random_ds_qlen_1) {
-                                        falcon_md.task_resub_hdr.udpate_ds_index = falcon_md.random_downstream_id_1;
                                         hdr.falcon.dst_id = falcon_md.random_downstream_id_1;
+                                        falcon_md.task_resub_hdr.ds_index_2 = falcon_md.random_downstream_id_2;
                                     } else {
-                                        falcon_md.task_resub_hdr.udpate_ds_index = falcon_md.random_downstream_id_2;
                                         hdr.falcon.dst_id = falcon_md.random_downstream_id_2;
+                                        falcon_md.task_resub_hdr.ds_index_2 = falcon_md.random_downstream_id_1;
                                     }
-                                    ig_intr_dprsr_md.resubmit_type = RESUBMIT_TYPE_NEW_TASK;
+                                    
                                 } else {
                                     hdr.falcon.dst_id = falcon_md.idle_ds_id;
                                 }
                             } 
+                        }
+                        @stage(7) {
+                            falcon_md.task_resub_hdr.qlen_1 = check_deferred_queue_len_list_1.execute(hdr.falcon.dst_id); // Returns QL[dst_id] + Deferred[dst_id]
+                            falcon_md.task_resub_hdr.ds_index_1 = hdr.falcon.dst_id;
+                        }
+                        @stage(8){
+                            if(falcon_md.task_resub_hdr.qlen_1 == 0) { // This return value means that we do not need to check deffered qlens, difference between samples were large enough that our decision is still valid
+                                inc_deferred_queue_len_list_2.execute(hdr.falcon.dst_id); // increment the second copy to be consistent with first one
+                            } else { // This means our decision might be invalid, need to check the deffered queue lens and resubmit
+                                ig_intr_dprsr_md.resubmit_type = RESUBMIT_TYPE_NEW_TASK;
+                                falcon_md.task_resub_hdr.qlen_2 = read_deferred_queue_len_list_2.execute(falcon_md.task_resub_hdr.ds_index_2);
+                            }
                         }
                     }
                     forward_falcon_switch_dst.apply();

@@ -88,8 +88,10 @@ struct eg_metadata_t {
 }
 
 header task_resub_hdr_t {
-    bit<16> udpate_ds_index; // This shows the index to be updated
-    bit<16> udpate_ds_value; // This shows the value to be written 
+    bit<16> ds_index_1; // This shows the index to be updated
+    bit<16> ds_index_2; // This shows the index to be updated
+    bit<8> qlen_1;
+    bit<8> qlen_2;
     //bit<16> dst_id; // This shows the wid to put in packet hdr (and forward based on this)
 }
 
@@ -119,9 +121,14 @@ struct falcon_metadata_t {
 
     bit<QUEUE_LEN_FIXED_POINT_SIZE> random_ds_qlen_1;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> random_ds_qlen_2;
+
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> selected_correct_qlen;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> not_selected_correct_qlen;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> min_correct_qlen;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> selected_ds_qlen;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> not_selected_ds_qlen;
-    
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> queue_len_diff;
+
     bit<16> cluster_absolute_leaf_index;
     bit<16> idle_ds_id;
     bit<8> selected_spine_iq_len;
@@ -137,6 +144,7 @@ struct falcon_metadata_t {
 	task_resub_hdr_t task_resub_hdr;
 	remove_resub_hdr_t remove_resub_hdr;
 	bit<8> idle_len_8bit;
+
 }
 
 
