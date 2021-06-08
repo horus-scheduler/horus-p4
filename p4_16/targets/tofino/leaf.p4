@@ -8,6 +8,11 @@
 
 // TODO: Remove linked spine iq when new task comes and idlecount is 1
 /*
+ * Note: Difference with simulations
+ * In python when taking samples from qlen lists, we just used random.sample() and took K *distinct* samples 
+ * In hardware it is not possible to ensure that these values are distinct and two samples might point to same position
+ * TODO: Modify the python simulations to reflect this (This is also same for racksched system might affect their performance)
+ *
  * Notes:
  *  An action can be called directly without a table (from apply{} block)
  *  Here multiple calls to action from the apply{} block is allowed (e.g in different if-else branches)
@@ -124,7 +129,7 @@ control LeafIngress(
             Register<queue_len_t, _>(MAX_WORKERS_IN_RACK) deferred_queue_len_list_1; // List of queue lens for all vclusters
                 RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_1) check_deferred_queue_len_list_1 = {
                     void apply(inout queue_len_t value, out queue_len_t rv) {
-                        if (value < falcon_md.queue_len_diff) { // Queue len drift is not large enough to invalidate the decision
+                        if (value <= falcon_md.queue_len_diff) { // Queue len drift is not large enough to invalidate the decision
                             value = value + 1;
                             rv = 0;
                         } else {
@@ -138,6 +143,12 @@ control LeafIngress(
                         rv = value;
                     }
                 };
+                RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_1) inc_deferred_queue_len_list_1 = {
+                    void apply(inout queue_len_t value, out queue_len_t rv) {
+                            value = value + 1;
+                    }
+                };
+
             Register<queue_len_t, _>(MAX_WORKERS_IN_RACK) deferred_queue_len_list_2; // List of queue lens for all vclusters
                 RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_2) inc_deferred_queue_len_list_2 = {
                     void apply(inout queue_len_t value, out queue_len_t rv) {
@@ -348,6 +359,7 @@ control LeafIngress(
                 falcon_md.random_downstream_id_1 = falcon_md.random_downstream_id_1 >> 15;
                 falcon_md.random_downstream_id_2 = falcon_md.random_downstream_id_2 >> 15;
             }
+
             table adjust_random_range { // Reduce the random generated number (16 bit) based on number of workers in rack
                 key = {
                     falcon_md.cluster_num_valid_ds: exact; 
@@ -402,10 +414,10 @@ control LeafIngress(
                         @stage(1){
                             if (falcon_md.min_correct_qlen == falcon_md.task_resub_hdr.qlen_1) {
                                 hdr.falcon.dst_id = falcon_md.task_resub_hdr.ds_index_1;
-                                falcon_md.selected_ds_qlen = falcon_md.task_resub_hdr.qlen_1;
+                                falcon_md.selected_ds_qlen = falcon_md.task_resub_hdr.qlen_1 + 1;
                             } else {
                                 hdr.falcon.dst_id = falcon_md.task_resub_hdr.ds_index_2;
-                                falcon_md.selected_ds_qlen = falcon_md.task_resub_hdr.qlen_2;
+                                falcon_md.selected_ds_qlen = falcon_md.task_resub_hdr.qlen_2 + 1;
                             }
                         }
                         @stage(4){
@@ -414,7 +426,6 @@ control LeafIngress(
                         }
                         @stage(7){
                             reset_deferred_queue_len_list_1.execute(hdr.falcon.dst_id); // Just updated the queue_len_list so write 0 on deferred reg
-                            
                         }
                         @stage(8){
                             reset_deferred_queue_len_list_2.execute(hdr.falcon.dst_id);
@@ -467,7 +478,6 @@ control LeafIngress(
                                 falcon_md.last_probed_id = read_update_spine_probed_id.execute(hdr.falcon.cluster_id);
                             } 
                         }
-
 
                         
                         /** Stage 2
@@ -545,10 +555,10 @@ control LeafIngress(
                         if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK && falcon_md.cluster_idle_count == 0) {
                             falcon_md.random_ds_qlen_1 = read_queue_len_list_1.execute(falcon_md.random_downstream_id_1);
                             falcon_md.random_ds_qlen_2 = read_queue_len_list_2.execute(falcon_md.random_downstream_id_2);
-                        } else if(hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE) {
+                        } else if(hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE) {
                             write_queue_len_list_1.execute(hdr.falcon.src_id);
                             write_queue_len_list_2.execute(hdr.falcon.src_id);
-                        }
+                        } 
                         
                         // TODO: Should we trigger mirroring in last stage? or does it work from any stage
                         if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE) {
@@ -604,22 +614,33 @@ control LeafIngress(
                                         hdr.falcon.dst_id = falcon_md.random_downstream_id_2;
                                         falcon_md.task_resub_hdr.ds_index_2 = falcon_md.random_downstream_id_1;
                                     }
-                                    
                                 } else {
                                     hdr.falcon.dst_id = falcon_md.idle_ds_id;
                                 }
                             } 
                         }
                         @stage(7) {
-                            falcon_md.task_resub_hdr.qlen_1 = check_deferred_queue_len_list_1.execute(hdr.falcon.dst_id); // Returns QL[dst_id] + Deferred[dst_id]
-                            falcon_md.task_resub_hdr.ds_index_1 = hdr.falcon.dst_id;
+                            if (hdr.falcon.pkt_type==PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type==PKT_TYPE_TASK_DONE){
+                                reset_deferred_queue_len_list_1.execute(hdr.falcon.src_id); // Just updated the queue_len_list so write 0 on deferred reg
+                            } else {
+                            if (falcon_md.random_downstream_id_2 != falcon_md.random_downstream_id_1) {
+                                falcon_md.task_resub_hdr.qlen_1 = check_deferred_queue_len_list_1.execute(hdr.falcon.dst_id); // Returns QL[dst_id] + Deferred[dst_id]
+                                falcon_md.task_resub_hdr.ds_index_1 = hdr.falcon.dst_id;
+                            } else { // In case two samples point to the same cell, we do not need to resubmit just increment deferred list
+                                inc_deferred_queue_len_list_1.execute(hdr.falcon.dst_id);
+                            }
+                            }
                         }
                         @stage(8){
-                            if(falcon_md.task_resub_hdr.qlen_1 == 0) { // This return value means that we do not need to check deffered qlens, difference between samples were large enough that our decision is still valid
-                                inc_deferred_queue_len_list_2.execute(hdr.falcon.dst_id); // increment the second copy to be consistent with first one
-                            } else { // This means our decision might be invalid, need to check the deffered queue lens and resubmit
-                                ig_intr_dprsr_md.resubmit_type = RESUBMIT_TYPE_NEW_TASK;
-                                falcon_md.task_resub_hdr.qlen_2 = read_deferred_queue_len_list_2.execute(falcon_md.task_resub_hdr.ds_index_2);
+                            if (hdr.falcon.pkt_type==PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type==PKT_TYPE_TASK_DONE){
+                                reset_deferred_queue_len_list_2.execute(hdr.falcon.src_id); // Just updated the queue_len_list so write 0 on deferred reg
+                            } else {
+                                if(falcon_md.task_resub_hdr.qlen_1 == 0) { // This return value means that we do not need to check deffered qlens, difference between samples were large enough that our decision is still valid
+                                    inc_deferred_queue_len_list_2.execute(hdr.falcon.dst_id); // increment the second copy to be consistent with first one
+                                } else { // This means our decision might be invalid, need to check the deffered queue lens and resubmit
+                                    ig_intr_dprsr_md.resubmit_type = RESUBMIT_TYPE_NEW_TASK;
+                                    falcon_md.task_resub_hdr.qlen_2 = read_deferred_queue_len_list_2.execute(falcon_md.task_resub_hdr.ds_index_2);
+                                }
                             }
                         }
                     }

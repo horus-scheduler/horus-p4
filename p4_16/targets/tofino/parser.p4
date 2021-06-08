@@ -26,6 +26,7 @@ parser FalconIngressParser (
         falcon_md.aggregate_queue_len = 0;
         falcon_md.random_downstream_id_1 = 0;
         falcon_md.random_downstream_id_2 = 0;
+        falcon_md.task_resub_hdr.qlen_1 = 0;
         pkt.extract(ig_intr_md);
         transition parse_resub_meta;
     }
