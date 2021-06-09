@@ -55,6 +55,8 @@ def register_write(target, register_object, register_name, index, register_value
             [register_object.make_key([client.KeyTuple('$REGISTER_INDEX', index)])],
             [register_object.make_data([client.DataTuple(register_name, register_value)])])
 
+# Reads a given register at given index for and validates the expected value (if given) for a specific pipe
+# If expected_register_value is not given, does not verify and only logs the register value
 def test_register_read(target, register_object, register_name, pipe_id, index, expected_register_value=None):
         
         resp = register_object.entry_get(
@@ -148,7 +150,7 @@ class TestFalconLeaf(BfRuntimeTest):
     def runTest(self):
         # TODO: fix this, test script does not recognize the exported env variables
         #test_case = os.environ.get('FALCON_TEST_CASE')
-        test_case = 'idle_link_function'
+        test_case = 'sq_link_function'
         logger.info("\n***** Starting Test Case: %s \n", str(test_case))
         
         self.init_tables()
@@ -160,6 +162,209 @@ class TestFalconLeaf(BfRuntimeTest):
             self.schedule_task_sq_state()
         elif test_case == 'idle_link_function':
             self.idle_link_function()
+        elif test_case == 'sq_link_function':
+            self.sq_link_function()
+
+    # Test scenario:
+    # Leaf starts with no SQ link
+    # 1. One spine sends QUEUE_SCAN packet to get the queue length info:
+    # Expected: 1. Leaf should report its aggregate queue length as QUEUE_SIGNAL_INIT AND 2. store the spine id as linked SQ
+    # 2. A task done packet is received from a worker
+    # Expected: 1. Leaf should report the updated aggreget queue length as QUEUE_SIGNAL to the linked spine AND 2. Forwards original response packet to the correct dst
+    # 3. Spine sends a QUEUE_REMOVE packet to the leaf
+    # Expected: Leaf removes the linkage
+    def sq_link_function(self):
+        pipe_id = 0
+
+        initial_idle_list = []
+        initial_idle_count = len(initial_idle_list)
+        wid_port_mapping = {11:1, 12: 2, 13:3, 14: 4, 15:5, 16: 6, 17:7, 18: 8, 100: 10}
+        spine_port_mapping = {1001: 12, 1002: 13}
+        spine_port_mapping = collections.OrderedDict(sorted(spine_port_mapping.items()))
+        spine_idle_qlen = [2, 6]
+        initial_agg_qlen = 10
+        qlen_unit = 0b00000010 # assuming 3bit showing fraction and 5bit decimal: 0.25 (4 workers in this rack)
+
+        initial_linked_iq_spine = INVALID_VALUE_16bit # ID of linked spine for Idle link (Invalid = 0x00F0)
+        initial_linked_sq_spine = INVALID_VALUE_16bit # ID of linked spine for SQ link (Invalid = 0x00F0)
+        
+        # Scenario when <num_task_done> workers finish their task 
+        num_task_done = 1
+
+        num_valid_ds_elements = 2 # num bits for available workers for this vcluster in this rack (the worker number will be 2^W)
+        num_valid_us_elements = 1
+
+        register_write(self.target,
+                self.register_linked_iq_sched,
+                register_name='LeafIngress.linked_iq_sched.f1',
+                index=TEST_VCLUSTER_ID,
+                register_value=initial_linked_iq_spine)
+
+        register_write(self.target,
+                self.register_linked_sq_sched,
+                register_name='LeafIngress.linked_sq_sched.f1',
+                index=TEST_VCLUSTER_ID,
+                register_value=initial_linked_sq_spine)
+
+        register_write(self.target,
+            self.register_idle_count,
+            register_name='LeafIngress.idle_count.f1',
+            index=TEST_VCLUSTER_ID,
+            register_value=initial_idle_count)
+        
+        register_write(self.target,
+                self.register_aggregate_queue_len,
+                register_name='LeafIngress.aggregate_queue_len_list.f1',
+                index=TEST_VCLUSTER_ID,
+                register_value=initial_agg_qlen)
+        
+        register_write(self.target,
+            self.register_spine_iq_len_1,
+            register_name='LeafIngress.spine_iq_len_1.f1',
+            index=TEST_VCLUSTER_ID,
+            register_value=INVALID_VALUE_8bit)
+
+        register_write(self.target,
+            self.register_spine_probed_id,
+            register_name='LeafIngress.spine_probed_id.f1',
+            index=TEST_VCLUSTER_ID,
+            register_value=INVALID_VALUE_16bit)
+
+        # Insert idle_list values (wid of idle workers)
+        for i in range(initial_idle_count):
+            register_write(self.target,
+                self.register_idle_list,
+                register_name='LeafIngress.idle_list.f1',
+                index=i,
+                register_value=initial_idle_list[i])
+
+            test_register_read(self.target,
+                self.register_idle_list,
+                register_name="LeafIngress.idle_list.f1",
+                pipe_id=pipe_id,
+                index=i,
+                expected_register_value=initial_idle_list[i])
+        logger.info("********* Populating Table Entires *********")
+        # Insert port mapping for workers
+        for wid in wid_port_mapping.keys():
+            self.forward_falcon_switch_dst.entry_add(
+                self.target,
+                [self.forward_falcon_switch_dst.make_key([client.KeyTuple('hdr.falcon.dst_id', wid)])],
+                [self.forward_falcon_switch_dst.make_data([client.DataTuple('port', wid_port_mapping[wid])],
+                                             'LeafIngress.act_forward_falcon')]
+            )
+        logger.info("Inserted entries in forward_falcon_switch_dst table with key-values = %s ", str(wid_port_mapping))
+        
+        for i, spine_id in enumerate(spine_port_mapping.keys()):
+            self.get_spine_dst_id.entry_add(
+                self.target,
+                    [self.get_spine_dst_id.make_key([client.KeyTuple('falcon_md.random_id_1', i)])],
+                    [self.get_spine_dst_id.make_data([client.DataTuple('spine_dst_id', spine_id)],
+                                                 'LeafIngress.act_get_spine_dst_id')]
+                )
+            self.forward_falcon_switch_dst.entry_add(
+                self.target,
+                [self.forward_falcon_switch_dst.make_key([client.KeyTuple('hdr.falcon.dst_id', spine_id)])],
+                [self.forward_falcon_switch_dst.make_data([client.DataTuple('port', spine_port_mapping[spine_id])],
+                                             'LeafIngress.act_forward_falcon')]
+            )
+        # Insert qlen unit entries
+        self.set_queue_len_unit.entry_add(
+                self.target,
+                [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.falcon.local_cluster_id', TEST_VCLUSTER_ID)])],
+                [self.set_queue_len_unit.make_data([client.DataTuple('cluster_unit', qlen_unit)],
+                                             'LeafIngress.act_set_queue_len_unit')]
+            )
+        self.get_cluster_num_valid.entry_add(
+                self.target,
+                [self.get_cluster_num_valid.make_key([client.KeyTuple('hdr.falcon.cluster_id', TEST_VCLUSTER_ID)])],
+                [self.get_cluster_num_valid.make_data([client.DataTuple('num_ds_elements', num_valid_ds_elements), client.DataTuple('num_us_elements', num_valid_us_elements)],
+                                             'LeafIngress.act_get_cluster_num_valid')]
+            )
+        self.adjust_random_range_us.entry_add(
+                self.target,
+                [self.adjust_random_range_us.make_key([client.KeyTuple('falcon_md.cluster_num_valid_us', 1)])],
+                [self.adjust_random_range_us.make_data([], 'LeafIngress.adjust_random_worker_range_1')]
+            )
+        self.adjust_random_range_us.entry_add(
+                self.target,
+                [self.adjust_random_range_us.make_key([client.KeyTuple('falcon_md.cluster_num_valid_us', 2)])],
+                [self.adjust_random_range_us.make_data([], 'LeafIngress.adjust_random_worker_range_2')]
+            )
+        self.adjust_random_range_us.entry_add(
+                self.target,
+                [self.adjust_random_range_us.make_key([client.KeyTuple('falcon_md.cluster_num_valid_us', 4)])],
+                [self.adjust_random_range_us.make_data([], 'LeafIngress.adjust_random_worker_range_4')]
+            )
+        self.adjust_random_range_us.entry_add(
+                self.target,
+                [self.adjust_random_range_us.make_key([client.KeyTuple('falcon_md.cluster_num_valid_us', 8)])],
+                [self.adjust_random_range_us.make_data([], 'LeafIngress.adjust_random_worker_range_8')]
+            )
+
+        logger.info("\n********* Configure mirror session *********\n")
+        
+        # The mirror_cfg table controls what a specific mirror session id does to a packet.
+        # This is programming the mirror block in hardware.
+        # mirror_cfg_bfrt_key is equivalent to old "mirror_id" in PD term
+        for wid in wid_port_mapping.keys():
+            mirror_cfg_bfrt_key  = self.mirror_cfg_table.make_key([client.KeyTuple('$sid', wid)])
+            mirror_cfg_bfrt_data = self.mirror_cfg_table.make_data([
+                client.DataTuple('$direction', str_val="INGRESS"),
+                client.DataTuple('$ucast_egress_port', swports[wid_port_mapping[wid]]),
+                client.DataTuple('$ucast_egress_port_valid', bool_val=True),
+                client.DataTuple('$session_enable', bool_val=True),
+            ], "$normal")
+            self.mirror_cfg_table.entry_add(self.target, [ mirror_cfg_bfrt_key ], [ mirror_cfg_bfrt_data ])
+
+
+        logger.info("\n********* Sending PKT_TYPE_SCAN_QUEUE_SIGNAL packet from spine *********\n")
+        dst_id = 100 # this will be identifier for client (receiving reply pkt)
+        src_id = spine_port_mapping.keys()[0]
+        ig_port = spine_port_mapping[src_id]
+        scan_queue_pkt = make_falcon_scan_queue_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, seq_num=0x10+i, **eth_kwargs)
+        expected_pkt = make_falcon_queue_signal_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=src_id, seq_num=0x10+i, is_init=True, **eth_kwargs)
+        logger.info("Sending packet on port %d", ig_port)
+        testutils.send_packet(self, ig_port, scan_queue_pkt)
+        logger.info(" Verifying expected QUEUE_SIGNAL_INIT on port %d", ig_port)
+        testutils.verify_packets(self, expected_pkt, [ig_port])
+        # poll_res = testutils.dp_poll(self)
+        # (rcv_device, rcv_port, rcv_pkt, pkt_time) = poll_res
+        # print(poll_res)
+        test_register_read(self.target,
+            self.register_linked_sq_sched,
+            'LeafIngress.linked_sq_sched.f1',
+            pipe_id,
+            TEST_VCLUSTER_ID, 
+            src_id)
+        
+        task_done_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=4, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+        
+        logger.info("\n********* Sending TASK_DONE packet from a worker *********")
+        testutils.send_packet(self, ig_port, task_done_packet)
+        
+        logger.info("********* Manually verify: the TASK_DONE should be forwarded to its destination, a QUEUE_SIGNAL should be sent to linked spine *********")
+        for i in range(2):
+            poll_res = testutils.dp_poll(self)
+            (rcv_device, rcv_port, rcv_pkt, pkt_time) = poll_res
+            print(poll_res)
+
+        logger.info("\n********* Sending QUEUE_REMOVE packet from the linked spine *********")
+        queue_remove_pkt = make_falcon_queue_remove_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, seq_num=0x10+i, **eth_kwargs)
+        testutils.send_packet(self, ig_port, queue_remove_pkt)
+        poll_res = testutils.dp_poll(self)
+
+        logger.info("\n********* Verifying switch internal state: linked spine should be INVALID value *********")
+        test_register_read(self.target,
+            self.register_linked_sq_sched,
+            'LeafIngress.linked_sq_sched.f1',
+            pipe_id,
+            TEST_VCLUSTER_ID, 
+            INVALID_VALUE_16bit)
+
+        for wid in wid_port_mapping.keys():
+            mirror_cfg_bfrt_key  = self.mirror_cfg_table.make_key([client.KeyTuple('$sid', wid)])
+            self.mirror_cfg_table.entry_del(self.target, [mirror_cfg_bfrt_key]) 
 
     # Test scenario: 
     # Starts with no idle state. 

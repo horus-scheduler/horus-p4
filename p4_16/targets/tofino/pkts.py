@@ -30,7 +30,8 @@ PKT_TYPE_IDLE_SIGNAL = 0x06
 PKT_TYPE_QUEUE_SIGNAL = 0x07
 PKT_TYPE_PROBE_IDLE_QUEUE = 0x08
 PKT_TYPE_PROBE_IDLE_RESPONSE = 0x09
-PKT_TYPE_IDLE_REMOVE = 0x10
+PKT_TYPE_IDLE_REMOVE = 0x0a
+PKT_TYPE_QUEUE_SIGNAL_INIT = 0x0b
 
 def get_field(name):
     exists = type(name) == str and name.lower() in field_dict
@@ -96,7 +97,40 @@ def make_falcon_probe_idle_pkt(dst_ip, cluster_id, local_cluster_id, src_id, dst
     
     return pkt
 
-def make_falcon_task_done_pkt(dst_ip, cluster_id, local_cluster_id, src_id, dst_id, is_idle, q_len=0, seq_num=1000, pkt_len=128, **kwargs):
+def make_falcon_probe_idle_response_pkt(dst_ip, cluster_id, local_cluster_id, src_id, dst_id, seq_num, q_len, **kwargs):
+    eth_hdr = make_eth_hdr(**kwargs)
+    
+    falcon_hdr = FalconPacket(pkt_type=PKT_TYPE_PROBE_IDLE_RESPONSE, cluster_id=cluster_id, local_cluster_id=local_cluster_id, src_id=src_id, dst_id=dst_id, q_len=q_len, seq_num=seq_num)
+
+    pkt = eth_hdr / scapy.IP(src='192.168.0.16', dst=dst_ip) / scapy.UDP(dport=FALCON_PORT, chksum=0) / falcon_hdr
+    
+    return pkt
+
+def make_falcon_scan_queue_pkt(dst_ip, cluster_id, local_cluster_id, src_id, dst_id, seq_num, **kwargs):
+    eth_hdr = make_eth_hdr(**kwargs)
+    falcon_hdr = FalconPacket(pkt_type=PKT_TYPE_SCAN_QUEUE_SIGNAL, cluster_id=cluster_id, local_cluster_id=local_cluster_id, src_id=src_id, dst_id=dst_id, q_len=0, seq_num=seq_num)
+    pkt = eth_hdr / scapy.IP(src='192.168.0.16', dst=dst_ip) / scapy.UDP(dport=FALCON_PORT, chksum=0) / falcon_hdr
+    return pkt
+
+def make_falcon_queue_remove_pkt(dst_ip, cluster_id, local_cluster_id, src_id, dst_id, seq_num, **kwargs):
+    eth_hdr = make_eth_hdr(**kwargs)
+    falcon_hdr = FalconPacket(pkt_type=PKT_TYPE_QUEUE_REMOVE, cluster_id=cluster_id, local_cluster_id=local_cluster_id, src_id=src_id, dst_id=dst_id, q_len=0, seq_num=seq_num)
+    pkt = eth_hdr / scapy.IP(src='192.168.0.16', dst=dst_ip) / scapy.UDP(dport=FALCON_PORT, chksum=0) / falcon_hdr
+    return pkt
+
+def make_falcon_queue_signal_pkt(dst_ip, cluster_id, local_cluster_id, src_id, dst_id, seq_num, is_init, **kwargs):
+    eth_hdr = make_eth_hdr(**kwargs)
+    if is_init:
+        pkt_type = PKT_TYPE_QUEUE_SIGNAL_INIT
+    else:
+        pkt_type = PKT_TYPE_QUEUE_SIGNAL
+    falcon_hdr = FalconPacket(pkt_type=pkt_type, cluster_id=cluster_id, local_cluster_id=local_cluster_id, src_id=src_id, dst_id=dst_id, q_len=0, seq_num=seq_num)
+    pkt = eth_hdr / scapy.IP(src='192.168.0.16', dst=dst_ip) / scapy.UDP(dport=FALCON_PORT, chksum=0) / falcon_hdr
+    return pkt
+
+
+
+def make_falcon_task_done_pkt(dst_ip, cluster_id, local_cluster_id, src_id, dst_id, is_idle, q_len, seq_num=1000, pkt_len=128, **kwargs):
     eth_hdr = make_eth_hdr(**kwargs)
     if is_idle:
         falcon_hdr = FalconPacket(pkt_type=PKT_TYPE_TASK_DONE_IDLE, cluster_id=cluster_id, local_cluster_id=local_cluster_id, src_id=src_id, dst_id=dst_id, q_len=q_len, seq_num=seq_num)

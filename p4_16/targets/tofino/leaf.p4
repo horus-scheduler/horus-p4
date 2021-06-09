@@ -205,14 +205,14 @@ control LeafIngress(
                 RegisterAction<bit<16>, _, bit<16>>(linked_sq_sched) read_update_linked_sq  = {
                     void apply(inout bit<16> value, out bit<16> rv) {
                         rv = value;
-                        if (value == 0xFFFF && hdr.falcon.pkt_type == PKT_TYPE_SCAN_QUEUE_SIGNAL) { // Not linked before and new SCAN request arrived
+                        if (value == INVALID_VALUE_16bit && hdr.falcon.pkt_type == PKT_TYPE_SCAN_QUEUE_SIGNAL) { // Not linked before and new SCAN request arrived
                             value = hdr.falcon.src_id;
                         }
                     }
                 };
                 RegisterAction<bit<16>, _, bit<16>>(linked_sq_sched) remove_linked_sq  = {
                     void apply(inout bit<16> value, out bit<16> rv) {
-                        value = 0xFFFF;
+                        value = INVALID_VALUE_16bit;
                         rv = value;
                     }
                 };
@@ -426,11 +426,12 @@ control LeafIngress(
                 falcon_md.selected_spine_iq_len = min(falcon_md.last_iq_len, hdr.falcon.qlen);
             }
 
-            action convert_pkt_to_sq_signal() {
-                hdr.falcon.pkt_type = PKT_TYPE_QUEUE_SIGNAL; // This should be set in last stage because effects other stages (if conditions)
-                hdr.falcon.qlen = falcon_md.aggregate_queue_len;
-            }
+            // action convert_pkt_to_sq_signal() {
+                // hdr.falcon.pkt_type = PKT_TYPE_QUEUE_SIGNAL; // This should be set in last stage because effects other stages (if conditions)
+                // hdr.falcon.qlen = falcon_md.aggregate_queue_len;
+            // }
             
+
 
             apply {
                 if (hdr.falcon.isValid()) {  // Falcon packet
@@ -506,7 +507,6 @@ control LeafIngress(
                                 falcon_md.last_probed_id = read_update_spine_probed_id.execute(hdr.falcon.cluster_id);
                             } 
                         }
-
                         
                         /** Stage 2
                          * get_curr_idle_index, dep: get_idle_index() @st1
@@ -531,12 +531,15 @@ control LeafIngress(
                                         Here we modify the original packet and send it as a ctrl pkt to the linked spine.
                                         TODO: Might not work as we expect.
                                         */
-                                        convert_pkt_to_sq_signal();
+                                        hdr.falcon.pkt_type = PKT_TYPE_QUEUE_SIGNAL; // This should be set in last stage because effects other stages (if conditions)
+                                        hdr.falcon.qlen = falcon_md.aggregate_queue_len;
                                         hdr.falcon.dst_id = falcon_md.linked_sq_id;
+                                        ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE; 
                                 }
                             } else if (hdr.falcon.pkt_type == PKT_TYPE_SCAN_QUEUE_SIGNAL) {
                                 if (falcon_md.linked_sq_id == INVALID_VALUE_16bit) { // Not linked to another spine so we reply back with queue signal
-                                    convert_pkt_to_sq_signal();
+                                    hdr.falcon.pkt_type = PKT_TYPE_QUEUE_SIGNAL_INIT; // This should be set in last stage because effects other stages (if conditions)
+                                    hdr.falcon.qlen = falcon_md.aggregate_queue_len;
                                     hdr.falcon.dst_id = hdr.falcon.src_id;
                                 }
                             } else if (hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_RESPONSE){
@@ -583,17 +586,13 @@ control LeafIngress(
                                 write_queue_len_list_2.execute(hdr.falcon.src_id);
                             } 
                             
-                            if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE) {
-                                if (falcon_md.linked_sq_id != INVALID_VALUE_16bit) {
-                                    /* 
-                                    Desired behaviour: Mirror premitive (emit invoked in ingrdeparser) will send the original response from worker
-                                    Here we modify the original packet and send it as a ctrl pkt to the linked spine.
-                                    TODO: Might not work as we expect.
-                                    */
-                                    // Set different mirror types for different headers if needed
-                                    ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE; 
-                                }
-                            }  
+                            // if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE) {
+                            //     if (falcon_md.linked_sq_id != INVALID_VALUE_16bit) {
+                                    
+                            //         // Set different mirror types for different headers if needed
+                            //         ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE; 
+                            //     }
+                            // }  
                             if (hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_RESPONSE || (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE && falcon_md.cluster_idle_count == 0)) { // Only update linkage if this is the leaf have just became idle
                                 if (falcon_md.last_probed_id != INVALID_VALUE_16bit) { // This is the second probe response
                                     write_linked_iq.execute(hdr.falcon.cluster_id);
