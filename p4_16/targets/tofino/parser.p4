@@ -16,7 +16,7 @@ parser FalconIngressParser (
     // TofinoIngressParser() tofino_parser;
 
     state start {
-        falcon_md.linked_sq_id = 0xFF;
+        falcon_md.linked_sq_id = INVALID_VALUE_16bit;
         falcon_md.queue_len_unit = 0;
         falcon_md.cluster_idle_count = 0;   
         falcon_md.idle_ds_index = 0;   
@@ -24,9 +24,11 @@ parser FalconIngressParser (
         falcon_md.cluster_ds_start_idx=0;
         falcon_md.rand_probe_group = 0;
         falcon_md.aggregate_queue_len = 0;
-        falcon_md.random_downstream_id_1 = 0;
-        falcon_md.random_downstream_id_2 = 0;
+        falcon_md.random_id_1 = 0;
+        falcon_md.random_id_2 = 0;
         falcon_md.task_resub_hdr.qlen_1 = 0;
+        falcon_md.last_probed_id = INVALID_VALUE_16bit;
+        falcon_md.last_iq_len = INVALID_VALUE_8bit;
         pkt.extract(ig_intr_md);
         transition parse_resub_meta;
     }

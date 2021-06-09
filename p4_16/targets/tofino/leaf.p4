@@ -35,6 +35,7 @@
  *   Comparing two metadeta feilds (with < >) in apply{} blcok resulted in error. (Too complex). Only can use == on two meta feilds!
 */
 
+
 control LeafIngress(
         inout falcon_header_t hdr,
         inout falcon_metadata_t falcon_md,
@@ -209,11 +210,6 @@ control LeafIngress(
                         }
                     }
                 };
-                RegisterAction<bit<16>, _, bit<16>>(linked_sq_sched) write_linked_sq  = {
-                    void apply(inout bit<16> value, out bit<16> rv) {
-                        
-                    }
-                };
                 RegisterAction<bit<16>, _, bit<16>>(linked_sq_sched) remove_linked_sq  = {
                     void apply(inout bit<16> value, out bit<16> rv) {
                         value = 0xFFFF;
@@ -223,29 +219,31 @@ control LeafIngress(
 
             // Below are registers to hold state in middle of probing Idle list proceess. 
             // So we can compare them when second switch responds.
+            // IMPORTANT: Tofino Bug: comparison with largest value (e.g value==0xFF) in stateful ALU returns false even when value is 0xFF!
+            // However comparison with 0 works fine! Maybe this is a bug in *tofino model* only. But no posts in community forums stated such bug! 
+            // TODO: Report to community
             Register<queue_len_t, _>(MAX_VCLUSTERS) spine_iq_len_1; // Length of Idle list for first probed spine (1 for each vcluster).
                 RegisterAction<queue_len_t, _, queue_len_t>(spine_iq_len_1) read_update_spine_iq_len_1  = {
                     void apply(inout queue_len_t value, out queue_len_t rv) {
                         rv = value;
-                        if (value == 0xFF) { // Value==INVALID, So this is the first probe and we store the data
+                        if (value == INVALID_VALUE_8bit) { // Value==INVALID, So this is the first probe and we store the data
                             value = hdr.falcon.qlen;
                         } else { // Value found so this is the second probe and we load the data
-                            value = 0xFF;
+                            value = INVALID_VALUE_8bit;
                         }
                     }
                 };
-                Register<switch_id_t, _>(MAX_VCLUSTERS) spine_probed_id; // ID of the first probed spine (1 for each vcluster)
-                RegisterAction<switch_id_t, _, switch_id_t>(spine_probed_id) read_update_spine_probed_id  = {
-                    void apply(inout switch_id_t value, out switch_id_t rv) {
+                Register<bit<16>, _>(MAX_VCLUSTERS) spine_probed_id; // ID of the first probed spine (1 for each vcluster)
+                RegisterAction<bit<16>, _, bit<16>>(spine_probed_id) read_update_spine_probed_id  = {
+                    void apply(inout bit<16> value, out bit<16> rv) {
                         rv = value;
-                        if (value == 0xFFFF) { // Value==INVALID, So this is the first probe and we store the data.
+                        if (value == INVALID_VALUE_16bit) { // Value==INVALID, So this is the first probe and we store the data.
                             value = hdr.falcon.src_id;
-                        } else { // Value found so this is the second probe and we load the data
-                            value = 0xFFFF;
+                        } else { // Value was valid so this is the second probe and we load the data
+                            value = INVALID_VALUE_16bit;
                         }
                     }
                 };
-
             
             /* 
               As a workaround since we can't select the random range in runtime. 
@@ -298,7 +296,7 @@ control LeafIngress(
                 */
                 // Different out ports for level 2 randomly generated
                 // Here we use the same random 16 bit number generated for downstream ID to save resources
-                ig_intr_tm_md.mcast_grp_b = falcon_md.random_downstream_id_1; 
+                ig_intr_tm_md.mcast_grp_b = falcon_md.random_id_1; 
             }
         
             // action set_mirror_type_worker_response() {
@@ -320,15 +318,16 @@ control LeafIngress(
                 default_action = NoAction;
             }
 
-            action act_get_cluster_num_valid_ds(bit<16> num_ds_elements) {
+            action act_get_cluster_num_valid(bit<16> num_ds_elements, bit<16> num_us_elements) {
                 falcon_md.cluster_num_valid_ds = num_ds_elements;
+                falcon_md.cluster_num_valid_us = num_us_elements;
             }
-            table get_cluster_num_valid_ds {
+            table get_cluster_num_valid {
                 key = {
                     hdr.falcon.cluster_id : exact;
                 }
                 actions = {
-                    act_get_cluster_num_valid_ds;
+                    act_get_cluster_num_valid;
                     NoAction;
                 }
                 size = HDR_CLUSTER_ID_SIZE;
@@ -336,31 +335,31 @@ control LeafIngress(
             }
 
             action gen_random_workers_16() {
-                falcon_md.random_downstream_id_1 = (bit<16>) random_worker_id_16.get();
-                falcon_md.random_downstream_id_2 = (bit<16>) random_worker_id_16.get();
+                falcon_md.random_id_1 = (bit<16>) random_worker_id_16.get();
+                falcon_md.random_id_2 = (bit<16>) random_worker_id_16.get();
             }
             
             action adjust_random_worker_range_8() {
-                falcon_md.random_downstream_id_1 = falcon_md.random_downstream_id_1 >> 8;
-                falcon_md.random_downstream_id_2 = falcon_md.random_downstream_id_2 >> 8;
+                falcon_md.random_id_1 = falcon_md.random_id_1 >> 8;
+                falcon_md.random_id_2 = falcon_md.random_id_2 >> 8;
             }
 
             action adjust_random_worker_range_4() {
-                falcon_md.random_downstream_id_1 = falcon_md.random_downstream_id_1 >> 12;
-                falcon_md.random_downstream_id_2 = falcon_md.random_downstream_id_2 >> 12;
+                falcon_md.random_id_1 = falcon_md.random_id_1 >> 12;
+                falcon_md.random_id_2 = falcon_md.random_id_2 >> 12;
             }
 
             action adjust_random_worker_range_2() {
-                falcon_md.random_downstream_id_1 = falcon_md.random_downstream_id_1 >> 14;
-                falcon_md.random_downstream_id_2 = falcon_md.random_downstream_id_2 >> 14;
+                falcon_md.random_id_1 = falcon_md.random_id_1 >> 14;
+                falcon_md.random_id_2 = falcon_md.random_id_2 >> 14;
             }
 
             action adjust_random_worker_range_1() {
-                falcon_md.random_downstream_id_1 = falcon_md.random_downstream_id_1 >> 15;
-                falcon_md.random_downstream_id_2 = falcon_md.random_downstream_id_2 >> 15;
+                falcon_md.random_id_1 = falcon_md.random_id_1 >> 15;
+                falcon_md.random_id_2 = falcon_md.random_id_2 >> 15;
             }
 
-            table adjust_random_range { // Reduce the random generated number (16 bit) based on number of workers in rack
+            table adjust_random_range_ds { // Reduce the random generated number (16 bit) based on number of workers in rack
                 key = {
                     falcon_md.cluster_num_valid_ds: exact; 
                 }
@@ -374,10 +373,39 @@ control LeafIngress(
                 size = 16;
                 default_action = NoAction;
             }
+            
+            table adjust_random_range_us { // Reduce the random generated number (16 bit) based on number of workers in rack
+                key = {
+                    falcon_md.cluster_num_valid_us: exact; 
+                }
+                actions = {
+                    adjust_random_worker_range_8(); // == 8
+                    adjust_random_worker_range_4(); // == 4
+                    adjust_random_worker_range_2(); // == 2
+                    adjust_random_worker_range_1(); // == 1
+                    NoAction; // == 16
+                }
+                size = 16;
+                default_action = NoAction;
+            }
 
+            action act_get_spine_dst_id(bit <16> spine_dst_id){
+                hdr.falcon.dst_id = spine_dst_id;
+            }
+            table get_spine_dst_id {
+                key = {
+                    falcon_md.random_id_1: exact;
+                }
+                actions = {
+                    act_get_spine_dst_id();
+                    NoAction;
+                }
+                size = 16;
+                default_action = NoAction;
+            }
             action offset_random_ids() {
-                falcon_md.random_downstream_id_1 = falcon_md.random_downstream_id_1 + falcon_md.cluster_ds_start_idx;
-                falcon_md.random_downstream_id_2 = falcon_md.random_downstream_id_2 + falcon_md.cluster_ds_start_idx;
+                falcon_md.random_id_1 = falcon_md.random_id_1 + falcon_md.cluster_ds_start_idx;
+                falcon_md.random_id_2 = falcon_md.random_id_2 + falcon_md.cluster_ds_start_idx;
             }
 
             action compare_queue_len() {
@@ -420,14 +448,14 @@ control LeafIngress(
                                 falcon_md.selected_ds_qlen = falcon_md.task_resub_hdr.qlen_2 + 1;
                             }
                         }
-                        @stage(4){
+                        @stage(4) {
                             update_queue_len_list_1.execute(hdr.falcon.dst_id);
                             update_queue_len_list_2.execute(hdr.falcon.dst_id);
                         }
-                        @stage(7){
+                        @stage(7) {
                             reset_deferred_queue_len_list_1.execute(hdr.falcon.dst_id); // Just updated the queue_len_list so write 0 on deferred reg
                         }
-                        @stage(8){
+                        @stage(8) {
                             reset_deferred_queue_len_list_2.execute(hdr.falcon.dst_id);
                         }
                     } else {
@@ -457,7 +485,7 @@ control LeafIngress(
 
                         /**Stage 1
                          * get_idle_index, dep: get_worker_start_idx @st0, idle_count @st 0
-                         * get_cluster_num_valid_ds
+                         * get_cluster_num_valid
                          * gen_random_workers_16
                          Registers:
                          * aggregate_queue_len, dep: queue_len_unit @st0
@@ -467,7 +495,7 @@ control LeafIngress(
                         // INFO: Compiler bug, if calculate the index for reg action here, compiler complains but if in action its okay!
                         @stage(1){
                             get_idle_index();
-                            get_cluster_num_valid_ds.apply();
+                            get_cluster_num_valid.apply();
                             gen_random_workers_16();
                             if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE || hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
                                 //@st st_aggregate_queue = 0
@@ -488,15 +516,16 @@ control LeafIngress(
                          * All of the worker qlen related regs, deps: resource limit of prev stage  
                         */
                         @stage(2) {
+                            falcon_md.mirror_dst_id = hdr.falcon.dst_id; // We want the original packet to reach its destination
                             if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK){
                                 get_curr_idle_index(); // decrement the index so we read the correct idle worker id
-                                adjust_random_range.apply(); // move the random indexes to be in range of num workers in rack
-                                
-                                // falcon_md.worker_qlen_3 = read_queue_len_list_3.execute(hdr.falcon.cluster_id);
-                                // falcon_md.worker_qlen_4 = read_queue_len_list_4.execute(hdr.falcon.cluster_id);
+                                adjust_random_range_ds.apply(); // move the random indexes to be in range of num workers in rack
+                            } else {
+                                adjust_random_range_us.apply();
+                            }
 
-                            } else if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE) {
-                                if (falcon_md.linked_sq_id != 0xFFFF) {
+                            if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE) {
+                                if (falcon_md.linked_sq_id != INVALID_VALUE_16bit) {
                                         /* 
                                         Desired behaviour: Mirror premitive (emit invoked in ingrdeparser) will send the original response
                                         Here we modify the original packet and send it as a ctrl pkt to the linked spine.
@@ -505,17 +534,13 @@ control LeafIngress(
                                         convert_pkt_to_sq_signal();
                                         hdr.falcon.dst_id = falcon_md.linked_sq_id;
                                 }
-                                // write_queue_len_list_1.execute(hdr.falcon.src_id);
-                                // write_queue_len_list_2.execute(hdr.falcon.src_id);
-                                // write_queue_len_list_3.execute(hdr.falcon.src_id);
-                                // write_queue_len_list_4.execute(hdr.falcon.src_id);
                             } else if (hdr.falcon.pkt_type == PKT_TYPE_SCAN_QUEUE_SIGNAL) {
-                                if (falcon_md.linked_sq_id == 0xFFFF) { // Not linked to another spine so we reply back with queue signal
+                                if (falcon_md.linked_sq_id == INVALID_VALUE_16bit) { // Not linked to another spine so we reply back with queue signal
                                     convert_pkt_to_sq_signal();
                                     hdr.falcon.dst_id = hdr.falcon.src_id;
                                 }
                             } else if (hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_RESPONSE){
-                                compare_spine_iq_len();
+                                compare_spine_iq_len();   
                             }
 
                         } 
@@ -534,7 +559,7 @@ control LeafIngress(
                                     offset_random_ids();
                                 }
                             } else if (hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_RESPONSE) {
-                                if (falcon_md.last_probed_id != 0xFFFF) { // This is the second probe response
+                                if (falcon_md.last_probed_id != INVALID_VALUE_16bit) { // This is the second probe response
                                     if (falcon_md.selected_spine_iq_len == falcon_md.last_iq_len) { // last spine selected
                                         falcon_md.spine_to_link_iq = falcon_md.last_probed_id;
                                         hdr.falcon.dst_id = falcon_md.last_probed_id;
@@ -542,8 +567,6 @@ control LeafIngress(
                                         falcon_md.spine_to_link_iq = hdr.falcon.src_id;
                                         hdr.falcon.dst_id = hdr.falcon.src_id;
                                     }
-                                    hdr.falcon.pkt_type = PKT_TYPE_IDLE_SIGNAL;
-                                    
                                 }
                             }
                         } 
@@ -551,40 +574,38 @@ control LeafIngress(
                         /** Stage 4
                          * 
                         */
-                        @stage(4){
-                        if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK && falcon_md.cluster_idle_count == 0) {
-                            falcon_md.random_ds_qlen_1 = read_queue_len_list_1.execute(falcon_md.random_downstream_id_1);
-                            falcon_md.random_ds_qlen_2 = read_queue_len_list_2.execute(falcon_md.random_downstream_id_2);
-                        } else if(hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE) {
-                            write_queue_len_list_1.execute(hdr.falcon.src_id);
-                            write_queue_len_list_2.execute(hdr.falcon.src_id);
-                        } 
-                        
-                        // TODO: Should we trigger mirroring in last stage? or does it work from any stage
-                        if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE) {
-                            if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE) {
-                                if (falcon_md.cluster_idle_count == 0) { // Leaf just became idle so needs to announce to the spine layer
-                                        hdr.falcon.pkt_type = PKT_TYPE_PROBE_IDLE_QUEUE; // Change packet type to probe
-                                        gen_random_probe_group();
+                        @stage(4) {
+                            if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK && falcon_md.cluster_idle_count == 0) {
+                                falcon_md.random_ds_qlen_1 = read_queue_len_list_1.execute(falcon_md.random_id_1);
+                                falcon_md.random_ds_qlen_2 = read_queue_len_list_2.execute(falcon_md.random_id_2);
+                            } else if(hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE) {
+                                write_queue_len_list_1.execute(hdr.falcon.src_id);
+                                write_queue_len_list_2.execute(hdr.falcon.src_id);
+                            } 
+                            
+                            if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE) {
+                                if (falcon_md.linked_sq_id != INVALID_VALUE_16bit) {
+                                    /* 
+                                    Desired behaviour: Mirror premitive (emit invoked in ingrdeparser) will send the original response from worker
+                                    Here we modify the original packet and send it as a ctrl pkt to the linked spine.
+                                    TODO: Might not work as we expect.
+                                    */
+                                    // Set different mirror types for different headers if needed
+                                    ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE; 
+                                }
+                            }  
+                            if (hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_RESPONSE || (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE && falcon_md.cluster_idle_count == 0)) { // Only update linkage if this is the leaf have just became idle
+                                if (falcon_md.last_probed_id != INVALID_VALUE_16bit) { // This is the second probe response
+                                    write_linked_iq.execute(hdr.falcon.cluster_id);
+                                    hdr.falcon.pkt_type = PKT_TYPE_IDLE_SIGNAL; // Now change to idle signal to notify the selected spine
+                                } else {
+                                    if(hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE){
+                                        ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE; 
+                                    }
+                                    hdr.falcon.pkt_type = PKT_TYPE_PROBE_IDLE_QUEUE; // Change packet type to probe
+                                    get_spine_dst_id.apply();
                                 }
                             }
-                            if (falcon_md.linked_sq_id != 0xFFFF) {
-                                
-                                /* 
-                                Desired behaviour: Mirror premitive (emit invoked in ingrdeparser) will send the original response
-                                Here we modify the original packet and send it as a ctrl pkt to the linked spine.
-                                TODO: Might not work as we expect.
-                                */
-                                // Set different mirror types for different headers if needed
-                                ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE; 
-                                
-                            }
-                        } else if (hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_RESPONSE) {
-                            if (falcon_md.last_probed_id != 0xFFFF) { // This is the second probe response
-                                write_linked_iq.execute(hdr.falcon.cluster_id);
-                            }
-                        }
-
                         }
 
                         /** Stage 5
@@ -592,6 +613,7 @@ control LeafIngress(
                         */
                         @stage(5){
                         // packet is resubmitted
+                        
                         if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK && falcon_md.cluster_idle_count == 0) {
                             compare_queue_len();
                             get_larger_queue_len();
@@ -608,11 +630,11 @@ control LeafIngress(
                             if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
                                 if (falcon_md.cluster_idle_count == 0) {
                                     if (falcon_md.selected_ds_qlen == falcon_md.random_ds_qlen_1) {
-                                        hdr.falcon.dst_id = falcon_md.random_downstream_id_1;
-                                        falcon_md.task_resub_hdr.ds_index_2 = falcon_md.random_downstream_id_2;
+                                        hdr.falcon.dst_id = falcon_md.random_id_1;
+                                        falcon_md.task_resub_hdr.ds_index_2 = falcon_md.random_id_2;
                                     } else {
-                                        hdr.falcon.dst_id = falcon_md.random_downstream_id_2;
-                                        falcon_md.task_resub_hdr.ds_index_2 = falcon_md.random_downstream_id_1;
+                                        hdr.falcon.dst_id = falcon_md.random_id_2;
+                                        falcon_md.task_resub_hdr.ds_index_2 = falcon_md.random_id_1;
                                     }
                                 } else {
                                     hdr.falcon.dst_id = falcon_md.idle_ds_id;
@@ -623,12 +645,12 @@ control LeafIngress(
                             if (hdr.falcon.pkt_type==PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type==PKT_TYPE_TASK_DONE){
                                 reset_deferred_queue_len_list_1.execute(hdr.falcon.src_id); // Just updated the queue_len_list so write 0 on deferred reg
                             } else {
-                            if (falcon_md.random_downstream_id_2 != falcon_md.random_downstream_id_1) {
+                            if (falcon_md.random_id_2 != falcon_md.random_id_1) {
                                 falcon_md.task_resub_hdr.qlen_1 = check_deferred_queue_len_list_1.execute(hdr.falcon.dst_id); // Returns QL[dst_id] + Deferred[dst_id]
                                 falcon_md.task_resub_hdr.ds_index_1 = hdr.falcon.dst_id;
                             } else { // In case two samples point to the same cell, we do not need to resubmit just increment deferred list
                                 inc_deferred_queue_len_list_1.execute(hdr.falcon.dst_id);
-                            }
+                                }
                             }
                         }
                         @stage(8){
@@ -676,7 +698,7 @@ control LeafIngressDeparser(
              output port (value) (same table as falcon forward in ingress)
             */
             // TODO: Bug Report to community. emit() should support single param interface when no header is needed. But gets compiler internal error! 
-            mirror.emit<empty_t>((MirrorId_t) hdr.falcon.dst_id, {}); 
+            mirror.emit<empty_t>((MirrorId_t) falcon_md.mirror_dst_id, {}); 
         }  else if (ig_intr_dprsr_md.mirror_type == MIRROR_TYPE_NEW_TASK) {
 
         }

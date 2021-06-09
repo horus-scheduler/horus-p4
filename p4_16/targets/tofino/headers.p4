@@ -56,6 +56,9 @@
 #define RESUBMIT_TYPE_NEW_TASK 1
 #define RESUBMIT_TYPE_IDLE_REMOVE 2
 
+const bit<8> INVALID_VALUE_8bit = 8w0x7F;
+const bit<16> INVALID_VALUE_16bit = 16w0x7FFF;
+
 typedef bit<8> queue_len_t;
 typedef bit<9> port_id_t;
 typedef bit<16> worker_id_t;
@@ -111,9 +114,10 @@ struct falcon_metadata_t {
     bit<QUEUE_LEN_FIXED_POINT_SIZE> aggregate_queue_len;
     MulticastGroupId_t rand_probe_group;
     bit<16> cluster_num_valid_ds;
+    bit<16> cluster_num_valid_us;
     bit<16> cluster_num_valid_queue_signals;
-    bit<16> random_downstream_id_1;
-    bit<16> random_downstream_id_2;
+    bit<16> random_id_1;
+    bit<16> random_id_2;
     bit<16> random_ds_index_1;
     bit<16> random_ds_index_2;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_1;
