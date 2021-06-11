@@ -41,7 +41,7 @@ control SpineIngress(
         };
         RegisterAction<bit<16>, _, bit<16>>(idle_list) write_idle_list = {
             void apply(inout bit<16> value, out bit<16> rv) {
-                value = falcon_md.remove_resub_hdr.list_top_leaf;
+                value = falcon_md.task_resub_hdr.ds_index_2;
                 rv = value;
             }
         };
@@ -91,9 +91,9 @@ control SpineIngress(
         };
 
     Register<queue_len_t, _>(MAX_TOTAL_LEAFS) queue_len_list_1; // List of queue lens for all vclusters
-        RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_1) inc_queue_len_list_1 = {
+        RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_1) update_queue_len_list_1 = {
             void apply(inout queue_len_t value, out queue_len_t rv) {
-                value = value + 1;
+                value = falcon_md.selected_ds_qlen;
                 rv = value;
             }
         };
@@ -108,10 +108,12 @@ control SpineIngress(
                 rv = value;
             }
         };
+
+
     Register<queue_len_t, _>(MAX_TOTAL_LEAFS) queue_len_list_2; // List of queue lens for all vclusters
-        RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_2) inc_queue_len_list_2 = {
+        RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_2) update_queue_len_list_2 = {
             void apply(inout queue_len_t value, out queue_len_t rv) {
-                value = value + 1;
+                value = falcon_md.selected_ds_qlen;
                 rv = value;
             }
         };
@@ -120,9 +122,51 @@ control SpineIngress(
                 rv = value;
             }
         };
-         RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_2) write_queue_len_list_2 = {
+        RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_2) write_queue_len_list_2 = {
             void apply(inout queue_len_t value, out queue_len_t rv) {
                 value = hdr.falcon.qlen;
+                rv = value;
+            }
+        };
+
+    Register<queue_len_t, _>(MAX_TOTAL_LEAFS) deferred_queue_len_list_1; // List of queue lens for all vclusters
+        RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_1) check_deferred_queue_len_list_1 = {
+            void apply(inout queue_len_t value, out queue_len_t rv) {
+                if (value <= falcon_md.queue_len_diff) { // Queue len drift is not large enough to invalidate the decision
+                    value = value + 1;
+                    rv = 0;
+                } else {
+                    rv = value + falcon_md.selected_ds_qlen; // to avoid using another stage for this calculation
+                }
+            }
+        };
+         RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_1) reset_deferred_queue_len_list_1 = {
+            void apply(inout queue_len_t value, out queue_len_t rv) {
+                value = 0;
+                rv = value;
+            }
+        };
+        RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_1) inc_deferred_queue_len_list_1 = {
+            void apply(inout queue_len_t value, out queue_len_t rv) {
+                    value = value + 1;
+            }
+        };
+
+    Register<queue_len_t, _>(MAX_TOTAL_LEAFS) deferred_queue_len_list_2; // List of queue lens for all vclusters
+        RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_2) inc_deferred_queue_len_list_2 = {
+            void apply(inout queue_len_t value, out queue_len_t rv) {
+                value = value + 1;
+                rv = value;
+            }
+        };
+        RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_2) read_deferred_queue_len_list_2 = {
+            void apply(inout queue_len_t value, out queue_len_t rv) {
+                rv = value + falcon_md.not_selected_ds_qlen;
+            }
+        };
+        RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_2) reset_deferred_queue_len_list_2 = {
+            void apply(inout queue_len_t value, out queue_len_t rv) {
+                value = 0;
                 rv = value;
             }
         };
@@ -161,7 +205,7 @@ control SpineIngress(
         };
         RegisterAction<bit<16>, _, bit<16>>(idle_list_idx_mapping) update_idle_list_idx_mapping = {
             void apply(inout bit<16> value, out bit<16> rv) {
-                value = falcon_md.remove_resub_hdr.removed_position;
+                value = falcon_md.task_resub_hdr.ds_index_1;
                 rv = value;
             }
         };
@@ -316,6 +360,17 @@ control SpineIngress(
     action compare_queue_len() {
         falcon_md.selected_ds_qlen = min(falcon_md.random_ds_qlen_1, falcon_md.random_ds_qlen_2);
     }
+    action compare_correct_queue_len() {
+        falcon_md.min_correct_qlen = min(falcon_md.task_resub_hdr.qlen_1, falcon_md.task_resub_hdr.qlen_2);
+    }
+
+    action calculate_queue_len_diff() {
+        falcon_md.queue_len_diff = falcon_md.not_selected_ds_qlen - falcon_md.selected_ds_qlen;
+    }
+    action get_larger_queue_len() {
+        falcon_md.not_selected_ds_qlen = max(falcon_md.random_ds_qlen_1, falcon_md.random_ds_qlen_2);
+    }
+
     action calculate_num_signals(){
         falcon_md.num_additional_signal_needed = falcon_md.cluster_max_linked_leafs - falcon_md.cluster_num_valid_queue_signals;
     }
@@ -326,7 +381,7 @@ control SpineIngress(
     }
     table set_queue_len_unit {
         key = {
-            hdr.falcon.local_cluster_id: exact;
+            hdr.falcon.cluster_id: exact;
             hdr.falcon.dst_id: exact;
         }
         actions = {
@@ -337,9 +392,23 @@ control SpineIngress(
         default_action = NoAction;
     }
 
+    action act_get_leaf_dst_id(bit <16> leaf_dst_id){
+        hdr.falcon.dst_id = leaf_dst_id;
+    }
+    table get_leaf_dst_id {
+        key = {
+            falcon_md.random_ds_index_1: exact;
+        }
+        actions = {
+            act_get_leaf_dst_id();
+            NoAction;
+        }
+        size = 16;
+        default_action = NoAction;
+    }
     // action offset_random_ids() {
-    //     falcon_md.random_downstream_id_1 = falcon_md.random_downstream_id_1 + falcon_md.cluster_ds_start_idx;
-    //     falcon_md.random_downstream_id_2 = falcon_md.random_downstream_id_2 + falcon_md.cluster_ds_start_idx;
+    //     falcon_md.random_id_1 = falcon_md.random_id_1 + falcon_md.cluster_ds_start_idx;
+    //     falcon_md.random_id_2 = falcon_md.random_id_2 + falcon_md.cluster_ds_start_idx;
     // }
 
     /********  Control block logic *********/
@@ -359,86 +428,123 @@ control SpineIngress(
                 get_leaf_start_idx ();
                 get_cluster_num_valid_leafs.apply();
                 gen_random_leaf_index_16();
-                
-                if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_SIGNAL) {
-                    falcon_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.falcon.cluster_id);
-                    reset_queue_signal_count.execute(hdr.falcon.cluster_id);
-                } else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE && ig_intr_md.resubmit_flag==0) { // Only decrement idle count in first pass of removal
-                    falcon_md.cluster_idle_count = read_and_dec_idle_count.execute(hdr.falcon.cluster_id);
-                } else if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL_INIT) {
-                    falcon_md.cluster_num_valid_queue_signals = read_and_inc_queue_signal_count.execute(hdr.falcon.cluster_id);
+                if (ig_intr_md.resubmit_flag != 0){
+                    compare_correct_queue_len();
+                    
                 } else {
-                    falcon_md.cluster_idle_count = read_idle_count.execute(hdr.falcon.cluster_id); // Get num_idle leafs (pointer to top of stack)
-                    falcon_md.cluster_num_valid_queue_signals = read_queue_signal_count.execute(hdr.falcon.cluster_id); // How many queue signals available
+                    if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_SIGNAL) {
+                        falcon_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.falcon.cluster_id);
+                        reset_queue_signal_count.execute(hdr.falcon.cluster_id);
+                    } else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE) { // Only decrement idle count in first pass of removal
+                        falcon_md.cluster_idle_count = read_and_dec_idle_count.execute(hdr.falcon.cluster_id);
+                    } else if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL_INIT) {
+                        falcon_md.cluster_num_valid_queue_signals = read_and_inc_queue_signal_count.execute(hdr.falcon.cluster_id);
+                    } else {
+                        falcon_md.cluster_idle_count = read_idle_count.execute(hdr.falcon.cluster_id); // Get num_idle leafs (pointer to top of stack)
+                        falcon_md.cluster_num_valid_queue_signals = read_queue_signal_count.execute(hdr.falcon.cluster_id); // How many queue signals available
+                    }
                 }
             }
 
             @stage(1) {
-                if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE && ig_intr_md.resubmit_flag==1) {
-                    if (falcon_md.cluster_idle_count == 0) { // No more idle info so we ask for the queue length signals
-                        set_broadcast_group();
-                        ig_intr_dprsr_md.resubmit_type = RESUBMIT_TYPE_IDLE_REMOVE; // Trigger resubmit for idle removal
+                if (ig_intr_md.resubmit_flag!=0) {
+                    if (falcon_md.min_correct_qlen == falcon_md.task_resub_hdr.qlen_1) {
+                        hdr.falcon.dst_id = falcon_md.task_resub_hdr.ds_index_1;
+                        falcon_md.selected_ds_qlen = falcon_md.task_resub_hdr.qlen_1 + 1;
+                    } else {
+                        hdr.falcon.dst_id = falcon_md.task_resub_hdr.ds_index_2;
+                        falcon_md.selected_ds_qlen = falcon_md.task_resub_hdr.qlen_2 + 1;
+                    }
+                    if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE) {
+                        if (falcon_md.cluster_idle_count == 0) { // No more idle leafs so we ask for the queue length signals
+                            set_broadcast_group();  
+                        }
                     }
                 } else {
+                    if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE) {
+                        ig_intr_dprsr_md.resubmit_type = RESUBMIT_TYPE_NEW_TASK; // Trigger resubmit for idle removal
+                    }
                     get_array_indices();
-                    
                 }
             }
 
             @stage(2) {
-                if (falcon_md.cluster_num_valid_queue_signals > 1) {
-                    adjust_random_range_sq_leafs.apply(); //  We want to select a random worker from available qlen signals
-                } else {
-                    adjust_random_range_all_leafs.apply(); // We want to select a random worker from all workers
+                if (ig_intr_md.resubmit_flag != 0){
+                    if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE) { // Second pass in remove process, update the position for the leaf that was top of idle list in previous pass (we moved it to the position for the leaf that is removed)
+                        update_idle_list_idx_mapping.execute(falcon_md.task_resub_hdr.ds_index_2);
+                    }
+                } else { 
+                    if (falcon_md.cluster_num_valid_queue_signals > 1) {
+                        adjust_random_range_sq_leafs.apply(); //  We want to select a random worker from available qlen signals
+                    } else {
+                        adjust_random_range_all_leafs.apply(); // We want to select a random worker from all workers
+                    }
+                    if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
+                        decrement_indices(); // decrement the idle index so we read the correct idle leaf ID
+                    }  else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_SIGNAL) {
+                        write_idle_list_idx_mapping.execute(falcon_md.cluster_absolute_leaf_index);
+                    } else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE) { // First pass in remove process, find position of the to-be-removed leaf in idle list from mapping reg 
+                        falcon_md.task_resub_hdr.ds_index_1 = read_idle_list_idx_mapping.execute(falcon_md.cluster_absolute_leaf_index);
+                        decrement_indices(); // decrement the idle index so we read the correct idle leaf ID
+                    } 
                 }
-                if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
-                    decrement_indices(); // decrement the index so we read the correct idle leaf ID
-                } 
-                else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_SIGNAL) {
-                    write_idle_list_idx_mapping.execute(falcon_md.cluster_absolute_leaf_index);
-                } else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE && (ig_intr_md.resubmit_flag == 0)) { // First pass in remove process, find position of the to-be-removed leaf in idle list from mapping reg 
-                    falcon_md.remove_resub_hdr.removed_position = read_idle_list_idx_mapping.execute(falcon_md.cluster_absolute_leaf_index);
-                } else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE && ig_intr_md.resubmit_flag == 1) { // Second pass in remove process, update the position for the leaf that was top of idle list in previous pass (we moved it to the position for the leaf that is removed)
-                    update_idle_list_idx_mapping.execute(falcon_md.remove_resub_hdr.list_top_leaf);
-                } 
             }
 
             @stage(3) {
-                if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK || (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE && ig_intr_md.resubmit_flag==0)) {
-                    falcon_md.random_downstream_id_1 = read_lid_list_1.execute(falcon_md.random_ds_index_1); // Read the leaf ID 1 from list1
-                    falcon_md.random_downstream_id_2 = read_lid_list_2.execute(falcon_md.random_ds_index_2); // Read the leaf ID 2 from list2
-                    falcon_md.idle_ds_id = read_idle_list.execute(falcon_md.idle_ds_index);
-                } else if(hdr.falcon.pkt_type == PKT_TYPE_IDLE_SIGNAL) {
-                    add_to_idle_list.execute(falcon_md.idle_ds_index);
-                } else if((hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE && ig_intr_md.resubmit_flag==1)) { // Second pass for removing idle
-                    write_idle_list.execute(falcon_md.remove_resub_hdr.removed_position);
-                } 
-                else if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL_INIT) {
-                    add_to_lid_list_1.execute(falcon_md.lid_ds_index); // Write src_id to next available leaf id array index
-                    add_to_lid_list_2.execute(falcon_md.lid_ds_index);   
-                } 
+                if (ig_intr_md.resubmit_flag != 0) {
+                    if(hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE) { // Second pass for removing idle
+                        write_idle_list.execute(falcon_md.task_resub_hdr.ds_index_1);
+                    } 
+                } else {
+                    if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK || hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE) {
+                        falcon_md.idle_ds_id = read_idle_list.execute(falcon_md.idle_ds_index);
+                    } else if(hdr.falcon.pkt_type == PKT_TYPE_IDLE_SIGNAL) {
+                        add_to_idle_list.execute(falcon_md.idle_ds_index);
+                    } 
+                }
             }
-
+            // Note: Here lid_list registers does not depend on stage 3 (it depends on stage2) but the resource for registers on stage 3 were limited (6 total regactions)!
             @stage(4) {
-                if(hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
-                    if (ig_intr_md.resubmit_flag == 0) { // First pass
-                        falcon_md.random_ds_qlen_1 = read_queue_len_list_1.execute(falcon_md.random_downstream_id_1); // Read qlen for leafID1
-                        falcon_md.random_ds_qlen_2 = read_queue_len_list_2.execute(falcon_md.random_downstream_id_2); // Read qlen for leafID2
-                    } else { // Second pass, resubmitted packet
-                        inc_queue_len_list_1.execute(falcon_md.task_resub_hdr.udpate_ds_index);
-                        inc_queue_len_list_2.execute(falcon_md.task_resub_hdr.udpate_ds_index);
-                        hdr.falcon.dst_id = falcon_md.task_resub_hdr.udpate_ds_index;
+                if (ig_intr_md.resubmit_flag == 0) {
+                    if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
+                        if (falcon_md.cluster_num_valid_queue_signals > 1) {
+                            falcon_md.random_id_1 = read_lid_list_1.execute(falcon_md.random_ds_index_1); // Read the leaf ID 1 from list1
+                            falcon_md.random_id_2 = read_lid_list_2.execute(falcon_md.random_ds_index_2); // Read the leaf ID 2 from list2
+                        } else {
+                            get_leaf_dst_id.apply(); // random destination
+                        }
+                    } else if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL_INIT) {
+                        add_to_lid_list_1.execute(falcon_md.lid_ds_index); // Write src_id to next available leaf id array index
+                        add_to_lid_list_2.execute(falcon_md.lid_ds_index);      
+                    } else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE) { // This reads the top of 
+                        falcon_md.task_resub_hdr.ds_index_2 = falcon_md.idle_ds_id;
                     }
-                } else if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL_INIT || hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL) {
-                    write_queue_len_list_1.execute(falcon_md.cluster_absolute_leaf_index); // Write the qlen at corresponding index for the leaf in this cluster
-                    write_queue_len_list_2.execute(falcon_md.cluster_absolute_leaf_index); // Write the qlen at corresponding index for the leaf in this cluster
-                } else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE && ig_intr_md.resubmit_flag==0) {
-                    //falcon_md.remove_resub_hdr.removed_position = falcon_md.idle_ds_id;
                 }
             }
 
             @stage(5) {
+                if (ig_intr_md.resubmit_flag != 0) {
+                     if(hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
+                        update_queue_len_list_1.execute(hdr.falcon.dst_id);
+                        update_queue_len_list_2.execute(hdr.falcon.dst_id);
+                     }
+                } else {
+                    if(hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
+                        falcon_md.random_ds_qlen_1 = read_queue_len_list_1.execute(falcon_md.random_id_1); // Read qlen for leafID1
+                        falcon_md.random_ds_qlen_2 = read_queue_len_list_2.execute(falcon_md.random_id_2); // Read qlen for leafID2
+                    } else if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL_INIT || hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL) {
+                        write_queue_len_list_1.execute(falcon_md.cluster_absolute_leaf_index); // Write the qlen at corresponding index for the leaf in this cluster
+                        write_queue_len_list_2.execute(falcon_md.cluster_absolute_leaf_index); // Write the qlen at corresponding index for the leaf in this cluster
+                    } 
+                    // else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE) {
+                    //     falcon_md.task_resub_hdr.ds_index_1 = falcon_md.idle_ds_id;
+                    // }
+                }
+            }
+
+            @stage(6) {
                 compare_queue_len();
+                get_larger_queue_len();
                 calculate_num_signals();
                 if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL) {
                     if (falcon_md.cluster_idle_count > 0) { // No more queue signals needed, unlink the leaf so it can join another spine
@@ -447,70 +553,85 @@ control SpineIngress(
                 }
             }
 
-            @stage(6) {
-                if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK){
-                    if (falcon_md.selected_ds_qlen == falcon_md.random_ds_qlen_1) {
-                        falcon_md.task_resub_hdr.udpate_ds_index = falcon_md.random_downstream_id_1;
-                    } else {
-                        falcon_md.task_resub_hdr.udpate_ds_index = falcon_md.random_downstream_id_2;
-                        //falcon_md.mirror_dst_id = falcon_md.random_downstream_id_2;
-                    }
-                    ig_intr_dprsr_md.resubmit_type = RESUBMIT_TYPE_NEW_TASK;
-                }
-            }
-
             @stage(7) {
-                if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
-                    if (falcon_md.num_additional_signal_needed > 0) { // Spine still needs to collect more queue length signals
-                        hdr.falcon.dst_id = falcon_md.mirror_dst_id; // No need for mirroring, just set dst_id
-                    }
-                } else if (hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_QUEUE) {
-                    // had to put changes in an action "convert_pkt_to_probe_idle_resp()" without this the p4i shows only the first hdr modification!
-                    // Not sure why but other lines get eliminated and not placed by the compiler! TODO: Check in tests, bug report to community.
-                    convert_pkt_to_probe_idle_resp();
-                    hdr.falcon.qlen = falcon_md.random_ds_qlen_2; // Get num_idles for reporting to leaf
-                    hdr.falcon.dst_id = hdr.falcon.src_id; // Send back to leaf that sent the probe
-                } else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE) {
-                    if (falcon_md.cluster_idle_count == 0) { // No more idle info so we ask for the queue length signals
-                        convert_pkt_to_scan_queue();
+                if (ig_intr_md.resubmit_flag == 0) {
+                    calculate_queue_len_diff();
+                    if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
+                        if (falcon_md.cluster_idle_count == 0 && falcon_md.cluster_num_valid_queue_signals > 1) {
+                            if (falcon_md.selected_ds_qlen == falcon_md.random_ds_qlen_1) {
+                                hdr.falcon.dst_id = falcon_md.random_id_1;
+                                falcon_md.task_resub_hdr.ds_index_2 = falcon_md.random_id_2;
+                            } else {
+                                hdr.falcon.dst_id = falcon_md.random_id_2;
+                                falcon_md.task_resub_hdr.ds_index_2 = falcon_md.random_id_1;
+                            }
+                        } else {
+                            hdr.falcon.dst_id = falcon_md.idle_ds_id;
+                        }   
                     }
                 }
-                hdr.falcon.src_id = SWITCH_ID;
             }
 
-        // if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
-            
-        //     if (falcon_md.cluster_idle_count > 0) { // Spine knows about some idle leafs 
-                
-        //     } else {
-                
-        //         if (falcon_md.cluster_num_valid_ds < MAX_LINKED_LEAFS) { // Spine still needs to collect more queue length signals
-        //             convert_pkt_to_scan_queue();
-        //             set_broadcast_group(); // TODO: Ctrl plane design: random probing using mcast groups, 
-        //             ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_NEW_TASK; // Mirroring the task pkt to selected leaf for scheduling, modify original packet for sending scan probe
-        //         } else {
-                    
-        //         }
-        //     }
-        // }
-        // else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE) {
-        //     // TODO: For now, leaf will only send back IDLE_REMOVE to the spine as reply. 
-        //     // Sometimes, We need to remove the switch with <src_id> from the idle list of the linked_iq as a result of random tasks.
-        //     //  but don't have access to its index at spine.
-        //     // Here we pop the most recent from stack. This also has a concurrency bug!
-        //     // As a workaround: Spine stores the array index of the idle leafs. When receives idle_remove, marks that index (e.g 0b1). 
-        //     // When assining tasks using idle leaf signal, it checks the leaf's index in that array, If the mark shows removed, it should havae been removed and it was a mistake so recirculate the packet and decrement the count 
-        //     @stage(0){
-        //     read_and_dec_idle_count.execute(hdr.falcon.cluster_id);
-        //     }
-        // }            
+            @stage(8){
+                set_queue_len_unit.apply(); // We need to get queue len unit for aggregate signal from the selected leaf to increment that correctly
+            }
 
-        // /** Stage 5
-        //  * 
-        // */
-        
+            @stage(9) {
+                // if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
+                //     if (falcon_md.num_additional_signal_needed > 0) { // Spine still needs to collect more queue length signals
+                //         ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_NEW_TASK;
+                //     } else {
+                //         hdr.falcon.dst_id = falcon_md.mirror_dst_id; // No need for mirroring, just set dst_id
+                //     }
+                // }
+                if (ig_intr_md.resubmit_flag != 0) {
+                    if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
+                        reset_deferred_queue_len_list_1.execute(hdr.falcon.dst_id); // Just updated the queue_len_list so write 0 on deferred reg
+                    }
+                } else {
+                    if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK && falcon_md.cluster_num_valid_queue_signals > 1) {
+                        if (falcon_md.random_id_2 != falcon_md.random_id_1) {
+                            falcon_md.task_resub_hdr.qlen_1 = check_deferred_queue_len_list_1.execute(hdr.falcon.dst_id); // Returns QL[dst_id] + Deferred[dst_id]
+                            falcon_md.task_resub_hdr.ds_index_1 = hdr.falcon.dst_id;
+                        } else { // In case two samples point to the same cell, we do not need to resubmit just increment deferred list
+                            inc_deferred_queue_len_list_1.execute(hdr.falcon.dst_id);
+                        }
+                    } else if (hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_QUEUE) {
+                        // had to put changes in an action "convert_pkt_to_probe_idle_resp()" without this the p4i shows only the first hdr modification!
+                        // Not sure why but other lines get eliminated and not placed by the compiler! TODO: Check in tests, bug report to community.
+                        convert_pkt_to_probe_idle_resp();
+                        hdr.falcon.qlen = falcon_md.random_ds_qlen_2; // Get num_idles for reporting to leaf
+                        hdr.falcon.dst_id = hdr.falcon.src_id; // Send back to leaf that sent the probe
+                    } else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE) {
+                        if (falcon_md.cluster_idle_count == 0) { // No more idle info so we ask for the queue length signals
+                            convert_pkt_to_scan_queue();
+                        }
+                    } else if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL || hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL_INIT) {
+                        reset_deferred_queue_len_list_1.execute(hdr.falcon.src_id); // Just updated the queue_len_list so write 0 on deferred reg
+                    }   
+                }
+            }
+
+            @stage(10) {
+                if (ig_intr_md.resubmit_flag != 0) {
+                    if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
+                        reset_deferred_queue_len_list_2.execute(hdr.falcon.dst_id); // Just updated the queue_len_list so write 0 on deferred reg
+                    }
+                } else {
+                    if (hdr.falcon.pkt_type==PKT_TYPE_QUEUE_SIGNAL || hdr.falcon.pkt_type==PKT_TYPE_QUEUE_SIGNAL_INIT){
+                        reset_deferred_queue_len_list_2.execute(hdr.falcon.src_id); // Just updated the queue_len_list so write 0 on deferred reg
+                    } else if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK && falcon_md.cluster_num_valid_queue_signals > 1) {
+                        if(falcon_md.task_resub_hdr.qlen_1 == 0) { // This return value means that we do not need to check deffered qlens, difference between samples were large enough that our decision is still valid
+                            inc_deferred_queue_len_list_2.execute(hdr.falcon.dst_id); // increment the second copy to be consistent with first one
+                        } else { // This means our decision might be invalid, need to check the deffered queue lens and resubmit
+                            ig_intr_dprsr_md.resubmit_type = RESUBMIT_TYPE_NEW_TASK;
+                            falcon_md.task_resub_hdr.qlen_2 = read_deferred_queue_len_list_2.execute(falcon_md.task_resub_hdr.ds_index_2);
+                        }
+                    }
+                }
+            }
         }
-        
+        hdr.falcon.src_id = SWITCH_ID;
         forward_falcon_switch_dst.apply();
             
         } else if (hdr.ipv4.isValid()) { // Regular switching procedure
@@ -537,9 +658,7 @@ control SpineIngressDeparser(
         }  
         if (ig_intr_dprsr_md.resubmit_type == RESUBMIT_TYPE_NEW_TASK) {
             resubmit.emit(falcon_md.task_resub_hdr);
-        } else if (ig_intr_dprsr_md.resubmit_type == RESUBMIT_TYPE_IDLE_REMOVE){
-            resubmit.emit(falcon_md.remove_resub_hdr);
-        }
+        } 
         pkt.emit(hdr.ethernet);
         pkt.emit(hdr.ipv4);
         pkt.emit(hdr.udp);

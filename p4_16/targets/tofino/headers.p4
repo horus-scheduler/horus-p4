@@ -90,6 +90,7 @@ struct eg_metadata_t {
 
 }
 
+// We use the same resub header format for removal to avoid using additional parser resources
 header task_resub_hdr_t {
     bit<16> ds_index_1; // This shows the index to be updated
     bit<16> ds_index_2; // This shows the index to be updated
@@ -107,6 +108,8 @@ struct falcon_metadata_t {
     bit<HDR_SRC_ID_SIZE> linked_sq_id;
     bit<HDR_SRC_ID_SIZE> linked_iq_id;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> queue_len_unit; // (1/num_worekrs) for each vcluster
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> queue_len_unit_sample_1; // (1/num_worekrs) for each vcluster
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> queue_len_unit_sample_2; // (1/num_worekrs) for each vcluster
     bit<8> cluster_idle_count;
     bit<16> idle_ds_index;
     bit<16> worker_index;
