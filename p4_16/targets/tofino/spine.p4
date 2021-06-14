@@ -133,10 +133,10 @@ control SpineIngress(
         RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_1) check_deferred_queue_len_list_1 = {
             void apply(inout queue_len_t value, out queue_len_t rv) {
                 if (value <= falcon_md.queue_len_diff) { // Queue len drift is not large enough to invalidate the decision
-                    value = value + 1;
+                    value = value + falcon_md.queue_len_unit;
                     rv = 0;
                 } else {
-                    rv = value + falcon_md.selected_ds_qlen; // to avoid using another stage for this calculation
+                    rv = value; // to avoid using another stage for this calculation
                 }
             }
         };
@@ -148,14 +148,14 @@ control SpineIngress(
         };
         RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_1) inc_deferred_queue_len_list_1 = {
             void apply(inout queue_len_t value, out queue_len_t rv) {
-                    value = value + 1;
+                    value = value + falcon_md.queue_len_unit;
             }
         };
 
     Register<queue_len_t, _>(MAX_TOTAL_LEAFS) deferred_queue_len_list_2; // List of queue lens for all vclusters
         RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_2) inc_deferred_queue_len_list_2 = {
             void apply(inout queue_len_t value, out queue_len_t rv) {
-                value = value + 1;
+                value = value + falcon_md.queue_len_unit;
                 rv = value;
             }
         };
@@ -376,16 +376,32 @@ control SpineIngress(
     }
 
     // This gives us the 1/#workers for each leaf switch in each vcluster 
-    action act_set_queue_len_unit(len_fixed_point_t cluster_unit) {
-        falcon_md.queue_len_unit = cluster_unit;
+    action act_set_queue_len_unit_1(len_fixed_point_t cluster_unit) {
+        falcon_md.task_resub_hdr.qlen_unit_1 = cluster_unit;
     }
-    table set_queue_len_unit {
+    table set_queue_len_unit_1 {
         key = {
             hdr.falcon.cluster_id: exact;
-            hdr.falcon.dst_id: exact;
+            falcon_md.random_id_1: exact;
         }
         actions = {
-            act_set_queue_len_unit;
+            act_set_queue_len_unit_1;
+            NoAction;
+        }
+        size = HDR_CLUSTER_ID_SIZE;
+        default_action = NoAction;
+    }
+
+    action act_set_queue_len_unit_2(len_fixed_point_t cluster_unit) {
+        falcon_md.task_resub_hdr.qlen_unit_2 = cluster_unit;
+    }
+    table set_queue_len_unit_2 {
+        key = {
+            hdr.falcon.cluster_id: exact;
+            falcon_md.random_id_2: exact;
+        }
+        actions = {
+            act_set_queue_len_unit_2;
             NoAction;
         }
         size = HDR_CLUSTER_ID_SIZE;
@@ -428,9 +444,8 @@ control SpineIngress(
                 get_leaf_start_idx ();
                 get_cluster_num_valid_leafs.apply();
                 gen_random_leaf_index_16();
-                if (ig_intr_md.resubmit_flag != 0){
+                if (ig_intr_md.resubmit_flag != 0) {
                     compare_correct_queue_len();
-                    
                 } else {
                     if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_SIGNAL) {
                         falcon_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.falcon.cluster_id);
@@ -450,10 +465,10 @@ control SpineIngress(
                 if (ig_intr_md.resubmit_flag!=0) {
                     if (falcon_md.min_correct_qlen == falcon_md.task_resub_hdr.qlen_1) {
                         hdr.falcon.dst_id = falcon_md.task_resub_hdr.ds_index_1;
-                        falcon_md.selected_ds_qlen = falcon_md.task_resub_hdr.qlen_1 + 1;
+                        falcon_md.selected_ds_qlen = falcon_md.task_resub_hdr.qlen_1 + falcon_md.task_resub_hdr.qlen_unit_1;
                     } else {
                         hdr.falcon.dst_id = falcon_md.task_resub_hdr.ds_index_2;
-                        falcon_md.selected_ds_qlen = falcon_md.task_resub_hdr.qlen_2 + 1;
+                        falcon_md.selected_ds_qlen = falcon_md.task_resub_hdr.qlen_2 + falcon_md.task_resub_hdr.qlen_unit_2;
                     }
                     if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE) {
                         if (falcon_md.cluster_idle_count == 0) { // No more idle leafs so we ask for the queue length signals
@@ -474,7 +489,7 @@ control SpineIngress(
                         update_idle_list_idx_mapping.execute(falcon_md.task_resub_hdr.ds_index_2);
                     }
                 } else { 
-                    if (falcon_md.cluster_num_valid_queue_signals > 1) {
+                    if (falcon_md.cluster_num_valid_queue_signals > 0) {
                         adjust_random_range_sq_leafs.apply(); //  We want to select a random worker from available qlen signals
                     } else {
                         adjust_random_range_all_leafs.apply(); // We want to select a random worker from all workers
@@ -507,7 +522,7 @@ control SpineIngress(
             @stage(4) {
                 if (ig_intr_md.resubmit_flag == 0) {
                     if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
-                        if (falcon_md.cluster_num_valid_queue_signals > 1) {
+                        if (falcon_md.cluster_num_valid_queue_signals > 0) {
                             falcon_md.random_id_1 = read_lid_list_1.execute(falcon_md.random_ds_index_1); // Read the leaf ID 1 from list1
                             falcon_md.random_id_2 = read_lid_list_2.execute(falcon_md.random_ds_index_2); // Read the leaf ID 2 from list2
                         } else {
@@ -532,6 +547,8 @@ control SpineIngress(
                     if(hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
                         falcon_md.random_ds_qlen_1 = read_queue_len_list_1.execute(falcon_md.random_id_1); // Read qlen for leafID1
                         falcon_md.random_ds_qlen_2 = read_queue_len_list_2.execute(falcon_md.random_id_2); // Read qlen for leafID2
+                        set_queue_len_unit_1.apply();
+                        set_queue_len_unit_2.apply();
                     } else if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL_INIT || hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL) {
                         write_queue_len_list_1.execute(falcon_md.cluster_absolute_leaf_index); // Write the qlen at corresponding index for the leaf in this cluster
                         write_queue_len_list_2.execute(falcon_md.cluster_absolute_leaf_index); // Write the qlen at corresponding index for the leaf in this cluster
@@ -557,13 +574,15 @@ control SpineIngress(
                 if (ig_intr_md.resubmit_flag == 0) {
                     calculate_queue_len_diff();
                     if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
-                        if (falcon_md.cluster_idle_count == 0 && falcon_md.cluster_num_valid_queue_signals > 1) {
+                        if (falcon_md.cluster_idle_count == 0 && falcon_md.cluster_num_valid_queue_signals > 0) {
                             if (falcon_md.selected_ds_qlen == falcon_md.random_ds_qlen_1) {
                                 hdr.falcon.dst_id = falcon_md.random_id_1;
                                 falcon_md.task_resub_hdr.ds_index_2 = falcon_md.random_id_2;
+                                falcon_md.queue_len_unit = falcon_md.task_resub_hdr.qlen_unit_1;
                             } else {
                                 hdr.falcon.dst_id = falcon_md.random_id_2;
                                 falcon_md.task_resub_hdr.ds_index_2 = falcon_md.random_id_1;
+                                falcon_md.queue_len_unit = falcon_md.task_resub_hdr.qlen_unit_2;
                             }
                         } else {
                             hdr.falcon.dst_id = falcon_md.idle_ds_id;
@@ -572,11 +591,7 @@ control SpineIngress(
                 }
             }
 
-            @stage(8){
-                set_queue_len_unit.apply(); // We need to get queue len unit for aggregate signal from the selected leaf to increment that correctly
-            }
-
-            @stage(9) {
+            @stage(8) {
                 // if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
                 //     if (falcon_md.num_additional_signal_needed > 0) { // Spine still needs to collect more queue length signals
                 //         ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_NEW_TASK;
@@ -589,9 +604,9 @@ control SpineIngress(
                         reset_deferred_queue_len_list_1.execute(hdr.falcon.dst_id); // Just updated the queue_len_list so write 0 on deferred reg
                     }
                 } else {
-                    if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK && falcon_md.cluster_num_valid_queue_signals > 1) {
+                    if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK && falcon_md.cluster_num_valid_queue_signals > 0) {
                         if (falcon_md.random_id_2 != falcon_md.random_id_1) {
-                            falcon_md.task_resub_hdr.qlen_1 = check_deferred_queue_len_list_1.execute(hdr.falcon.dst_id); // Returns QL[dst_id] + Deferred[dst_id]
+                            falcon_md.deferred_qlen_1 = check_deferred_queue_len_list_1.execute(hdr.falcon.dst_id); // Returns QL[dst_id] + Deferred[dst_id]
                             falcon_md.task_resub_hdr.ds_index_1 = hdr.falcon.dst_id;
                         } else { // In case two samples point to the same cell, we do not need to resubmit just increment deferred list
                             inc_deferred_queue_len_list_1.execute(hdr.falcon.dst_id);
@@ -612,7 +627,7 @@ control SpineIngress(
                 }
             }
 
-            @stage(10) {
+            @stage(9) {
                 if (ig_intr_md.resubmit_flag != 0) {
                     if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
                         reset_deferred_queue_len_list_2.execute(hdr.falcon.dst_id); // Just updated the queue_len_list so write 0 on deferred reg
@@ -620,8 +635,9 @@ control SpineIngress(
                 } else {
                     if (hdr.falcon.pkt_type==PKT_TYPE_QUEUE_SIGNAL || hdr.falcon.pkt_type==PKT_TYPE_QUEUE_SIGNAL_INIT){
                         reset_deferred_queue_len_list_2.execute(hdr.falcon.src_id); // Just updated the queue_len_list so write 0 on deferred reg
-                    } else if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK && falcon_md.cluster_num_valid_queue_signals > 1) {
-                        if(falcon_md.task_resub_hdr.qlen_1 == 0) { // This return value means that we do not need to check deffered qlens, difference between samples were large enough that our decision is still valid
+                    } else if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK && falcon_md.cluster_num_valid_queue_signals > 0) {
+                        falcon_md.task_resub_hdr.qlen_1 = falcon_md.deferred_qlen_1 + falcon_md.selected_ds_qlen;
+                        if(falcon_md.deferred_qlen_1 == 0) { // This return value means that we do not need to check deffered qlens, difference between samples were large enough that our decision is still valid
                             inc_deferred_queue_len_list_2.execute(hdr.falcon.dst_id); // increment the second copy to be consistent with first one
                         } else { // This means our decision might be invalid, need to check the deffered queue lens and resubmit
                             ig_intr_dprsr_md.resubmit_type = RESUBMIT_TYPE_NEW_TASK;

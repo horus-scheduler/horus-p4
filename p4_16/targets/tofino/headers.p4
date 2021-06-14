@@ -96,7 +96,8 @@ header task_resub_hdr_t {
     bit<16> ds_index_2; // This shows the index to be updated
     bit<8> qlen_1;
     bit<8> qlen_2;
-    //bit<16> dst_id; // This shows the wid to put in packet hdr (and forward based on this)
+    bit<8> qlen_unit_1;
+    bit<8> qlen_unit_2;
 }
 
 header remove_resub_hdr_t {
@@ -136,6 +137,7 @@ struct falcon_metadata_t {
     bit<QUEUE_LEN_FIXED_POINT_SIZE> not_selected_ds_qlen;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> queue_len_diff;
 
+    bit<8> deferred_qlen_1;
     bit<16> cluster_absolute_leaf_index;
     bit<16> idle_ds_id;
     bit<8> selected_spine_iq_len;

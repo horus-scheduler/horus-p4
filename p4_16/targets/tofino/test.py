@@ -9,6 +9,7 @@ import random
 from pkts import *
 import os
 import collections
+import math
 
 logger = logging.getLogger('Test')
 if not len(logger.handlers):
@@ -617,6 +618,149 @@ class TestFalconLeaf(BfRuntimeTest):
             mirror_cfg_bfrt_key  = self.mirror_cfg_table.make_key([client.KeyTuple('$sid', wid)])
             self.mirror_cfg_table.entry_del(self.target, [mirror_cfg_bfrt_key]) 
 
+    def schedule_task_idle_state(self):
+        pipe_id = 0
+
+        initial_idle_count = 4
+        initial_idle_list = [15, 11, 12, 17]
+        wid_port_mapping = {11:1, 12: 2, 13:3, 14: 4, 15:5, 16: 6, 17:7, 18: 8, 100: 10}
+
+        initial_agg_qlen = 0
+        qlen_unit = 0b00000010 # assuming 3bit showing fraction and 5bit decimal: 0.25 (4 workers in this rack)
+
+        initial_linked_iq_spine = 105 # ID of linked spine for Idle link
+        initial_linked_sq_spine = 0xFFFF # ID of linked spine for SQ link (Invalid = 0xFFFF, since we are in idle state)
+        
+        # Scenario when 2 workers finish their task 
+        num_task_done = 2
+
+        register_write(self.target,
+                self.register_linked_iq_sched,
+                register_name='LeafIngress.linked_iq_sched.f1',
+                index=TEST_VCLUSTER_ID,
+                register_value=initial_linked_iq_spine)
+
+        register_write(self.target,
+                self.register_linked_sq_sched,
+                register_name='LeafIngress.linked_sq_sched.f1',
+                index=TEST_VCLUSTER_ID,
+                register_value=initial_linked_sq_spine)
+
+        register_write(self.target,
+            self.register_idle_count,
+            register_name='LeafIngress.idle_count.f1',
+            index=TEST_VCLUSTER_ID,
+            register_value=initial_idle_count)
+        
+        register_write(self.target,
+                self.register_aggregate_queue_len,
+                register_name='LeafIngress.aggregate_queue_len_list.f1',
+                index=TEST_VCLUSTER_ID,
+                register_value=initial_agg_qlen)
+
+        # Simply verify the read from hw to check correct values were inserted
+        test_register_read(self.target,
+            self.register_idle_count,
+            'LeafIngress.idle_count.f1',
+            pipe_id,
+            TEST_VCLUSTER_ID,
+            initial_idle_count)
+
+        test_register_read(self.target,
+            self.register_aggregate_queue_len,
+            'LeafIngress.aggregate_queue_len_list.f1',
+            pipe_id,
+            TEST_VCLUSTER_ID,
+            initial_agg_qlen)
+
+        # Insert idle_list values (wid of idle workers)
+        for i in range(initial_idle_count):
+            register_write(self.target,
+                self.register_idle_list,
+                register_name='LeafIngress.idle_list.f1',
+                index=i,
+                register_value=initial_idle_list[i])
+
+            test_register_read(self.target,
+                self.register_idle_list,
+                register_name="LeafIngress.idle_list.f1",
+                pipe_id=pipe_id,
+                index=i,
+                expected_register_value=initial_idle_list[i])
+
+        logger.info("********* Populating Table Entires *********")
+        # Insert port mapping for workers
+        for wid in wid_port_mapping.keys():
+            self.forward_falcon_switch_dst.entry_add(
+                self.target,
+                [self.forward_falcon_switch_dst.make_key([client.KeyTuple('hdr.falcon.dst_id', wid)])],
+                [self.forward_falcon_switch_dst.make_data([client.DataTuple('port', wid_port_mapping[wid])],
+                                             'LeafIngress.act_forward_falcon')]
+            )
+        logger.info("Inserted entries in forward_falcon_switch_dst table with key-values = %s ", str(wid_port_mapping))
+        
+        # Insert qlen unit entries
+        self.set_queue_len_unit.entry_add(
+                self.target,
+                [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.falcon.local_cluster_id', TEST_VCLUSTER_ID)])],
+                [self.set_queue_len_unit.make_data([client.DataTuple('cluster_unit', qlen_unit)],
+                                             'LeafIngress.act_set_queue_len_unit')]
+            )
+
+        logger.info("********* Sending NEW_TASK packets, Testing scheduling on idle workers *********")
+        
+        expected_agg_qlen = initial_agg_qlen
+        for i in range(initial_idle_count):
+            test_register_read(self.target,
+                self.register_idle_count,
+                'LeafIngress.idle_count.f1',
+                pipe_id,
+                TEST_VCLUSTER_ID,
+                initial_idle_count - i)
+
+            idle_pointer_stack = initial_idle_count - i - 1 # This is the expected stack pointer in the switch (iterates the list from the last element)
+            ig_port = swports[random.randint(9, 15)] # port connected to spine
+            eg_port = swports[wid_port_mapping[initial_idle_list[idle_pointer_stack]]]
+            src_id = random.randint(1, 255)
+            dst_id = random.randint(1, 255)
+
+            new_task_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=random.randint(1, 255), pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+            expected_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=initial_idle_list[idle_pointer_stack], pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+            
+            logger.info("Sending task packet on port %d", ig_port)
+            testutils.send_packet(self, ig_port, new_task_packet)
+            logger.info("Expecting task packet on port %d (IFACE-OUT)", eg_port)
+            testutils.verify_packets(self, expected_packet, [eg_port])
+            expected_agg_qlen += qlen_unit
+            test_register_read(self.target,
+                self.register_aggregate_queue_len,
+                'LeafIngress.aggregate_queue_len_list.f1',
+                pipe_id,
+                TEST_VCLUSTER_ID,
+                expected_agg_qlen)
+        
+        for i in range(num_task_done):
+            dst_id = 100 # this will be identifier for client (receiving reply pkt)
+            src_id = initial_idle_list[i]
+            ig_port = wid_port_mapping[initial_idle_list[i]]
+            task_done_idle_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+            expected_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, pkt_len=0, seq_num=0x10+i, **eth_kwargs)            
+            expected_packet_probe_idle = make_falcon_probe_idle_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, pkt_len=0, seq_num=0x10+i, **eth_kwargs)            
+            logger.info("Sending done_idle packet on port %d", ig_port)
+            testutils.send_packet(self, ig_port, task_done_idle_packet)
+            
+            poll_res = testutils.dp_poll(self)
+            logger.info("Original response pkt should be forwarded by switch")
+            print(poll_res)
+            # TODO: Check multiple packets on multiple ports? testutils.verify_any_packet_any_port fails
+            logger.info("\n[Note] When first idle pkt is received, swith should send another pkt to spines to probe their IQ len, manually tested in Tofino modle logs\n")
+            logger.info("*** Checking the idle_count increase ***")
+            test_register_read(self.target,
+                self.register_idle_count,
+                'LeafIngress.idle_count.f1',
+                pipe_id,
+                TEST_VCLUSTER_ID,
+                i + 1)
 
     def schedule_task_sq_state(self):
         pipe_id = 0
@@ -847,151 +991,6 @@ class TestFalconLeaf(BfRuntimeTest):
                 pipe_id,
                 wid,
                 0)
-
-    def schedule_task_idle_state(self):
-        pipe_id = 0
-
-        initial_idle_count = 4
-        initial_idle_list = [15, 11, 12, 17]
-        wid_port_mapping = {11:1, 12: 2, 13:3, 14: 4, 15:5, 16: 6, 17:7, 18: 8, 100: 10}
-
-        initial_agg_qlen = 0
-        qlen_unit = 0b00000010 # assuming 3bit showing fraction and 5bit decimal: 0.25 (4 workers in this rack)
-
-        initial_linked_iq_spine = 105 # ID of linked spine for Idle link
-        initial_linked_sq_spine = 0xFFFF # ID of linked spine for SQ link (Invalid = 0xFFFF, since we are in idle state)
-        
-        # Scenario when 2 workers finish their task 
-        num_task_done = 2
-
-        register_write(self.target,
-                self.register_linked_iq_sched,
-                register_name='LeafIngress.linked_iq_sched.f1',
-                index=TEST_VCLUSTER_ID,
-                register_value=initial_linked_iq_spine)
-
-        register_write(self.target,
-                self.register_linked_sq_sched,
-                register_name='LeafIngress.linked_sq_sched.f1',
-                index=TEST_VCLUSTER_ID,
-                register_value=initial_linked_sq_spine)
-
-        register_write(self.target,
-            self.register_idle_count,
-            register_name='LeafIngress.idle_count.f1',
-            index=TEST_VCLUSTER_ID,
-            register_value=initial_idle_count)
-        
-        register_write(self.target,
-                self.register_aggregate_queue_len,
-                register_name='LeafIngress.aggregate_queue_len_list.f1',
-                index=TEST_VCLUSTER_ID,
-                register_value=initial_agg_qlen)
-
-        # Simply verify the read from hw to check correct values were inserted
-        test_register_read(self.target,
-            self.register_idle_count,
-            'LeafIngress.idle_count.f1',
-            pipe_id,
-            TEST_VCLUSTER_ID,
-            initial_idle_count)
-
-        test_register_read(self.target,
-            self.register_aggregate_queue_len,
-            'LeafIngress.aggregate_queue_len_list.f1',
-            pipe_id,
-            TEST_VCLUSTER_ID,
-            initial_agg_qlen)
-
-        # Insert idle_list values (wid of idle workers)
-        for i in range(initial_idle_count):
-            register_write(self.target,
-                self.register_idle_list,
-                register_name='LeafIngress.idle_list.f1',
-                index=i,
-                register_value=initial_idle_list[i])
-
-            test_register_read(self.target,
-                self.register_idle_list,
-                register_name="LeafIngress.idle_list.f1",
-                pipe_id=pipe_id,
-                index=i,
-                expected_register_value=initial_idle_list[i])
-
-        logger.info("********* Populating Table Entires *********")
-        # Insert port mapping for workers
-        for wid in wid_port_mapping.keys():
-            self.forward_falcon_switch_dst.entry_add(
-                self.target,
-                [self.forward_falcon_switch_dst.make_key([client.KeyTuple('hdr.falcon.dst_id', wid)])],
-                [self.forward_falcon_switch_dst.make_data([client.DataTuple('port', wid_port_mapping[wid])],
-                                             'LeafIngress.act_forward_falcon')]
-            )
-        logger.info("Inserted entries in forward_falcon_switch_dst table with key-values = %s ", str(wid_port_mapping))
-        
-        # Insert qlen unit entries
-        self.set_queue_len_unit.entry_add(
-                self.target,
-                [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.falcon.local_cluster_id', TEST_VCLUSTER_ID)])],
-                [self.set_queue_len_unit.make_data([client.DataTuple('cluster_unit', qlen_unit)],
-                                             'LeafIngress.act_set_queue_len_unit')]
-            )
-
-        logger.info("********* Sending NEW_TASK packets, Testing scheduling on idle workers *********")
-        
-        expected_agg_qlen = initial_agg_qlen
-        for i in range(initial_idle_count):
-            test_register_read(self.target,
-                self.register_idle_count,
-                'LeafIngress.idle_count.f1',
-                pipe_id,
-                TEST_VCLUSTER_ID,
-                initial_idle_count - i)
-
-            idle_pointer_stack = initial_idle_count - i - 1 # This is the expected stack pointer in the switch (iterates the list from the last element)
-            ig_port = swports[random.randint(9, 15)] # port connected to spine
-            eg_port = swports[wid_port_mapping[initial_idle_list[idle_pointer_stack]]]
-            src_id = random.randint(1, 255)
-            dst_id = random.randint(1, 255)
-
-            new_task_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=random.randint(1, 255), pkt_len=0, seq_num=0x10+i, **eth_kwargs)
-            expected_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=initial_idle_list[idle_pointer_stack], pkt_len=0, seq_num=0x10+i, **eth_kwargs)
-            
-            logger.info("Sending task packet on port %d", ig_port)
-            testutils.send_packet(self, ig_port, new_task_packet)
-            logger.info("Expecting task packet on port %d (IFACE-OUT)", eg_port)
-            testutils.verify_packets(self, expected_packet, [eg_port])
-            expected_agg_qlen += qlen_unit
-            test_register_read(self.target,
-                self.register_aggregate_queue_len,
-                'LeafIngress.aggregate_queue_len_list.f1',
-                pipe_id,
-                TEST_VCLUSTER_ID,
-                expected_agg_qlen)
-        
-        for i in range(num_task_done):
-            dst_id = 100 # this will be identifier for client (receiving reply pkt)
-            src_id = initial_idle_list[i]
-            ig_port = wid_port_mapping[initial_idle_list[i]]
-            task_done_idle_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
-            expected_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, pkt_len=0, seq_num=0x10+i, **eth_kwargs)            
-            expected_packet_probe_idle = make_falcon_probe_idle_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, pkt_len=0, seq_num=0x10+i, **eth_kwargs)            
-            logger.info("Sending done_idle packet on port %d", ig_port)
-            testutils.send_packet(self, ig_port, task_done_idle_packet)
-            
-            poll_res = testutils.dp_poll(self)
-            logger.info("Original response pkt should be forwarded by switch")
-            print(poll_res)
-            # TODO: Check multiple packets on multiple ports? testutils.verify_any_packet_any_port fails
-            logger.info("\n[Note] When first idle pkt is received, swith should send another pkt to spines to probe their IQ len, manually tested in Tofino modle logs\n")
-            logger.info("*** Checking the idle_count increase ***")
-            test_register_read(self.target,
-                self.register_idle_count,
-                'LeafIngress.idle_count.f1',
-                pipe_id,
-                TEST_VCLUSTER_ID,
-                i + 1)
-
 class TestFalconSpine(BfRuntimeTest):
     def setUp(self):
         client_id = 0
@@ -1020,15 +1019,22 @@ class TestFalconSpine(BfRuntimeTest):
         self.register_idle_list_idx_mapping = bfrt_info.table_get("SpineIngress.idle_list_idx_mapping")
         self.register_queue_len_list_1 = bfrt_info.table_get("SpineIngress.queue_len_list_1")
         self.register_queue_len_list_2 = bfrt_info.table_get("SpineIngress.queue_len_list_2")
-        self.register_deferred_list_1 = bfrt_info.table_get("SpineIngress.deferred_queue_len_list_1")
-        self.register_deferred_list_2 = bfrt_info.table_get("SpineIngress.deferred_queue_len_list_2")
+        self.register_deferred_queue_len_list_1 = bfrt_info.table_get("SpineIngress.deferred_queue_len_list_1")
+        self.register_deferred_queue_len_list_2 = bfrt_info.table_get("SpineIngress.deferred_queue_len_list_2")
+        self.register_lid_list_1 = bfrt_info.table_get("SpineIngress.lid_list_1")
+        self.register_lid_list_2 = bfrt_info.table_get("SpineIngress.lid_list_2")
+        self.register_queue_signal_count = bfrt_info.table_get("SpineIngress.queue_signal_count")
         
         # # MA Tables
         self.forward_falcon_switch_dst = bfrt_info.table_get("SpineIngress.forward_falcon_switch_dst")
-        self.forward_falcon_switch_dst.info.key_field_annotation_add("hdr.falcon.dst_id", "wid")
-        self.set_queue_len_unit = bfrt_info.table_get("SpineIngress.set_queue_len_unit")
-        self.set_queue_len_unit.info.key_field_annotation_add("hdr.falcon.cluster_id", "vcid")
-        self.set_queue_len_unit.info.key_field_annotation_add("hdr.falcon.dst_id", "dstid")
+        self.forward_falcon_switch_dst.info.key_field_annotation_add("hdr.falcon.dst_id", "lid")
+        self.set_queue_len_unit_1 = bfrt_info.table_get("SpineIngress.set_queue_len_unit_1")
+        self.set_queue_len_unit_1.info.key_field_annotation_add("hdr.falcon.cluster_id", "vcid")
+        self.set_queue_len_unit_1.info.key_field_annotation_add("falcon_md.random_id_1", "lid")
+        self.set_queue_len_unit_2 = bfrt_info.table_get("SpineIngress.set_queue_len_unit_2")
+        self.set_queue_len_unit_2.info.key_field_annotation_add("hdr.falcon.cluster_id", "vcid")
+        self.set_queue_len_unit_2.info.key_field_annotation_add("falcon_md.random_id_2", "lid")
+
         self.get_cluster_num_valid_leafs = bfrt_info.table_get("SpineIngress.get_cluster_num_valid_leafs")
         self.get_cluster_num_valid_leafs.info.key_field_annotation_add("hdr.falcon.cluster_id", "vcid")
         self.adjust_random_range_all_leafs = bfrt_info.table_get("SpineIngress.adjust_random_range_all_leafs")
@@ -1047,13 +1053,17 @@ class TestFalconSpine(BfRuntimeTest):
         self.tables.append(self.register_idle_list_idx_mapping)
         self.tables.append(self.register_queue_len_list_1)
         self.tables.append(self.register_queue_len_list_2)
-        self.tables.append(self.register_deferred_list_1)
-        self.tables.append(self.register_deferred_list_2)
+        self.tables.append(self.register_deferred_queue_len_list_1)
+        self.tables.append(self.register_deferred_queue_len_list_2)
+        self.tables.append(self.register_lid_list_1)
+        self.tables.append(self.register_lid_list_2)
+        self.tables.append(self.register_queue_signal_count)
 
         self.tables.append(self.adjust_random_range_all_leafs)
         self.tables.append(self.adjust_random_range_sq_leafs)
         self.tables.append(self.forward_falcon_switch_dst)
-        self.tables.append(self.set_queue_len_unit)
+        self.tables.append(self.set_queue_len_unit_1)
+        self.tables.append(self.set_queue_len_unit_2)
         self.tables.append(self.get_cluster_num_valid_leafs)
         self.tables.append(self.get_leaf_dst_id)
 
@@ -1062,7 +1072,7 @@ class TestFalconSpine(BfRuntimeTest):
     def runTest(self):
         # TODO: fix this, test script does not recognize the exported env variables
         #test_case = os.environ.get('FALCON_TEST_CASE')
-        test_case = 'schedule_idle_state'
+        test_case = 'schedule_task_sq_state'
         logger.info("\n***** Starting Test Case: %s \n", str(test_case))
         
         self.init_tables()
@@ -1072,8 +1082,8 @@ class TestFalconSpine(BfRuntimeTest):
             self.schedule_task_idle_state()
         elif test_case == 'remove_idle_leaf':
             self.remove_idle_leaf()
-        # elif test_case == 'schedule_sq_state':# Testing scheduling when no idle worker is available
-        #     self.schedule_task_sq_state()
+        elif test_case == 'schedule_task_sq_state':# Testing scheduling when no idle worker is available
+            self.schedule_task_sq_state()
         # elif test_case == 'idle_link_function':
         #     self.idle_link_function()
         # elif test_case == 'sq_link_function':
@@ -1264,5 +1274,193 @@ class TestFalconSpine(BfRuntimeTest):
                     expected_idle_count)
 
 
+    def schedule_task_sq_state(self):
+        pipe_id = 0
 
+        initial_idle_count = 0
+        initial_idle_list = []
+        qlen_units = [0b00000001, 0b000000100]
 
+        leaf_port_mapping = {11:1, 12: 2, 13:3, 14: 4, 15:5, 16: 6, 17:7, 18: 8, 100: 10}
+
+        spine_under_test_id = 100
+        intitial_qlen_state = [6, 1]
+        initial_lid_list = [11, 12] # leaf IDs for the queue lengths
+
+        initial_num_waiting_tasks = sum(intitial_qlen_state)
+
+        intitial_deferred_state = [0, 0, 0, 0, 0]
+        num_valid_ds_elements = 2 # num bits for available workers for this vcluster in this rack (the worker number will be 2^W)
+        max_linked_leafs = 2
+
+        workers_start_idx = TEST_VCLUSTER_ID * MAX_VCLUSTER_WORKERS
+
+        num_tasks_to_send = 3
+
+        register_write(self.target,
+            self.register_idle_count,
+            register_name='SpineIngress.idle_count.f1',
+            index=TEST_VCLUSTER_ID,
+            register_value=initial_idle_count)
+
+        register_write(self.target,
+            self.register_queue_signal_count,
+            register_name='SpineIngress.queue_signal_count.f1',
+            index=TEST_VCLUSTER_ID,
+            register_value=int(math.log(len(intitial_qlen_state))/math.log(2)))
+
+        for i, qlen in enumerate(intitial_qlen_state):
+            register_write(self.target,
+                    self.register_queue_len_list_1,
+                    register_name='SpineIngress.queue_len_list_1.f1',
+                    index=workers_start_idx + initial_lid_list[i],
+                    register_value=qlen)
+            register_write(self.target,
+                    self.register_queue_len_list_2,
+                    register_name='SpineIngress.queue_len_list_2.f1',
+                    index=workers_start_idx + initial_lid_list[i],
+                    register_value=qlen)
+
+            # Initial state for deferred lists is 0
+            register_write(self.target,
+                    self.register_deferred_queue_len_list_1,
+                    register_name='SpineIngress.deferred_queue_len_list_1.f1',
+                    index=workers_start_idx + initial_lid_list[i],
+                    register_value=intitial_deferred_state[i])
+            register_write(self.target,
+                    self.register_deferred_queue_len_list_2,
+                    register_name='SpineIngress.deferred_queue_len_list_2.f1',
+                    index=workers_start_idx + initial_lid_list[i],
+                    register_value=intitial_deferred_state[i])
+            
+            # Initial leaf ID list for available queue signals
+            register_write(self.target,
+                self.register_lid_list_1,
+                register_name='SpineIngress.lid_list_1.f1',
+                index=workers_start_idx + i,
+                register_value=initial_lid_list[i])
+            register_write(self.target,
+                self.register_lid_list_2,
+                register_name='SpineIngress.lid_list_2.f1',
+                index=workers_start_idx + i,
+                register_value=initial_lid_list[i])
+        
+        logger.info("********* Populating Table Entires *********")
+        # Insert qlen unit entires for each leaf in cluster
+        for i, lid in enumerate(initial_lid_list):
+            self.set_queue_len_unit_1.entry_add(
+                self.target,
+                [self.set_queue_len_unit_1.make_key([client.KeyTuple('hdr.falcon.cluster_id', TEST_VCLUSTER_ID), client.KeyTuple('falcon_md.random_id_1', lid)])],
+                [self.set_queue_len_unit_1.make_data([client.DataTuple('cluster_unit', qlen_units[i])],
+                                             'SpineIngress.act_set_queue_len_unit_1')]
+                )
+            self.set_queue_len_unit_2.entry_add(
+                self.target,
+                [self.set_queue_len_unit_2.make_key([client.KeyTuple('hdr.falcon.cluster_id', TEST_VCLUSTER_ID), client.KeyTuple('falcon_md.random_id_2', lid)])],
+                [self.set_queue_len_unit_2.make_data([client.DataTuple('cluster_unit', qlen_units[i])],
+                                             'SpineIngress.act_set_queue_len_unit_2')]
+                )
+
+        # Insert port mapping for workers
+        for lid in leaf_port_mapping.keys():
+            self.forward_falcon_switch_dst.entry_add(
+                self.target,
+                [self.forward_falcon_switch_dst.make_key([client.KeyTuple('hdr.falcon.dst_id', lid)])],
+                [self.forward_falcon_switch_dst.make_data([client.DataTuple('port', leaf_port_mapping[lid])],
+                                             'SpineIngress.act_forward_falcon')]
+            )
+
+        # Insert num_valid to set total num leafs for this vcluster
+        self.get_cluster_num_valid_leafs.entry_add(
+                self.target,
+                [self.get_cluster_num_valid_leafs.make_key([client.KeyTuple('hdr.falcon.cluster_id', TEST_VCLUSTER_ID)])],
+                [self.get_cluster_num_valid_leafs.make_data([client.DataTuple('num_leafs', num_valid_ds_elements), client.DataTuple('max_linked_leafs', max_linked_leafs)],
+                                             'SpineIngress.act_get_cluster_num_valid_leafs')]
+            )
+        # Insert adjust random range tables
+        self.adjust_random_range_all_leafs.entry_add(
+                self.target,
+                [self.adjust_random_range_all_leafs.make_key([client.KeyTuple('falcon_md.cluster_num_valid_ds', 1)])],
+                [self.adjust_random_range_all_leafs.make_data([], 'SpineIngress.adjust_random_leaf_index_1')]
+            )
+        self.adjust_random_range_all_leafs.entry_add(
+                self.target,
+                [self.adjust_random_range_all_leafs.make_key([client.KeyTuple('falcon_md.cluster_num_valid_ds', 2)])],
+                [self.adjust_random_range_all_leafs.make_data([], 'SpineIngress.adjust_random_leaf_index_2')]
+            )
+        self.adjust_random_range_all_leafs.entry_add(
+                self.target,
+                [self.adjust_random_range_all_leafs.make_key([client.KeyTuple('falcon_md.cluster_num_valid_ds', 4)])],
+                [self.adjust_random_range_all_leafs.make_data([], 'SpineIngress.adjust_random_leaf_index_4')]
+            )
+        self.adjust_random_range_all_leafs.entry_add(
+                self.target,
+                [self.adjust_random_range_all_leafs.make_key([client.KeyTuple('falcon_md.cluster_num_valid_ds', 8)])],
+                [self.adjust_random_range_all_leafs.make_data([], 'SpineIngress.adjust_random_leaf_index_8')]
+            )
+        
+        self.adjust_random_range_sq_leafs.entry_add(
+                self.target,
+                [self.adjust_random_range_sq_leafs.make_key([client.KeyTuple('falcon_md.cluster_num_valid_queue_signals', 1)])],
+                [self.adjust_random_range_sq_leafs.make_data([], 'SpineIngress.adjust_random_leaf_index_1')]
+            )
+        self.adjust_random_range_sq_leafs.entry_add(
+                self.target,
+                [self.adjust_random_range_sq_leafs.make_key([client.KeyTuple('falcon_md.cluster_num_valid_queue_signals', 2)])],
+                [self.adjust_random_range_sq_leafs.make_data([], 'SpineIngress.adjust_random_leaf_index_2')]
+            )
+        self.adjust_random_range_sq_leafs.entry_add(
+                self.target,
+                [self.adjust_random_range_sq_leafs.make_key([client.KeyTuple('falcon_md.cluster_num_valid_queue_signals', 4)])],
+                [self.adjust_random_range_sq_leafs.make_data([], 'SpineIngress.adjust_random_leaf_index_4')]
+            )
+        self.adjust_random_range_sq_leafs.entry_add(
+                self.target,
+                [self.adjust_random_range_sq_leafs.make_key([client.KeyTuple('falcon_md.cluster_num_valid_queue_signals', 8)])],
+                [self.adjust_random_range_sq_leafs.make_data([], 'SpineIngress.adjust_random_leaf_index_8')]
+            )
+
+        logger.info("Inserted entries in tables")
+        
+        logger.info("\n********* Sending NEW_TASK packets, Testing scheduling on busy leafs *********\n")
+        
+        for i in range(num_tasks_to_send):
+            test_register_read(self.target, #Idle count should stay at 0
+                self.register_idle_count,
+                'SpineIngress.idle_count.f1',
+                pipe_id,
+                TEST_VCLUSTER_ID,
+                0)
+
+            ig_port = swports[random.randint(9, 15)] # port connected to spine
+            src_id = random.randint(1, 255)
+            dst_id = spine_under_test_id
+
+            new_task_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+            expected_packet_0 = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=0, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+            expected_packet_1 = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=1, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+            logger.info("Sending task packet on port %d", ig_port)
+            testutils.send_packet(self, ig_port, new_task_packet)
+            poll_res = testutils.dp_poll(self)
+            print(poll_res)
+            for lid in initial_lid_list:
+                test_register_read(self.target,
+                    self.register_queue_len_list_1,
+                    'SpineIngress.queue_len_list_1.f1',
+                    pipe_id,
+                    workers_start_idx + lid)
+                test_register_read(self.target,
+                    self.register_queue_len_list_2,
+                    'SpineIngress.queue_len_list_2.f1',
+                    pipe_id,
+                    workers_start_idx + lid)
+                test_register_read(self.target,
+                    self.register_deferred_queue_len_list_1,
+                    'SpineIngress.deferred_queue_len_list_1.f1',
+                    pipe_id,
+                    workers_start_idx + lid)
+                test_register_read(self.target,
+                    self.register_deferred_queue_len_list_2,
+                    'SpineIngress.deferred_queue_len_list_2.f1',
+                    pipe_id,
+                    workers_start_idx + lid)

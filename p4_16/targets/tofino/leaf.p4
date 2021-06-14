@@ -435,7 +435,6 @@ control LeafIngress(
 
             apply {
                 if (hdr.falcon.isValid()) {  // Falcon packet
-
                     if (ig_intr_md.resubmit_flag != 0) { // Special case: packet is resubmitted just update the indexes
                         @stage(0){
                             compare_correct_queue_len();
