@@ -1044,8 +1044,8 @@ class TestFalconSpine(BfRuntimeTest):
         self.get_leaf_dst_id = bfrt_info.table_get("SpineIngress.get_leaf_dst_id")
         self.get_leaf_dst_id.info.key_field_annotation_add("falcon_md.random_ds_index_1", "random_id")
 
-        # HW config tables (Mirror and multicast)
-        #self.mirror_cfg_table = bfrt_info.table_get("$mirror.cfg")
+        self.mgid_table = bfrt_info.table_get("$pre.mgid")
+        self.node_table = bfrt_info.table_get("$pre.node")
 
         # Add tables to list for easier cleanup()
         self.tables.append(self.register_idle_count)
@@ -1067,12 +1067,13 @@ class TestFalconSpine(BfRuntimeTest):
         self.tables.append(self.get_cluster_num_valid_leafs)
         self.tables.append(self.get_leaf_dst_id)
 
-        #self.tables.append(self.mirror_cfg_table)
+        #self.tables.append(self.mgid_table)
+        #self.tables.append(self.node_table)
 
     def runTest(self):
         # TODO: fix this, test script does not recognize the exported env variables
         #test_case = os.environ.get('FALCON_TEST_CASE')
-        test_case = 'schedule_task_sq_state'
+        test_case = 'transition_to_no_idle'
         logger.info("\n***** Starting Test Case: %s \n", str(test_case))
         
         self.init_tables()
@@ -1084,11 +1085,184 @@ class TestFalconSpine(BfRuntimeTest):
             self.remove_idle_leaf()
         elif test_case == 'schedule_task_sq_state':# Testing scheduling when no idle worker is available
             self.schedule_task_sq_state()
-        # elif test_case == 'idle_link_function':
-        #     self.idle_link_function()
+        elif test_case == 'transition_to_no_idle':
+            self.transition_to_no_idle()
         # elif test_case == 'sq_link_function':
         #     self.sq_link_function()
     
+    # Test scenario:
+    # Spine starts in state that some idle leafs are available
+    # 1. Spine receives idle remove from leafs that don't have any idle workers until there is no idle leafs available
+    # Expected: 1. Spine should broadcast PKT_TYPE_SCAN_QUEUE_SIGNAL message to all of the leafs to get their queue lens
+    #   The broadcasted pacekt should be forwarded according to mcast port configurations
+    def transition_to_no_idle(self):
+        pipe_id = 0
+        initial_idle_count = 1
+        initial_idle_list = [11]
+        leaf_port_mapping = {11:1, 12: 2, 13:3, 14: 4, 15:5, 16: 6, 17:7, 18: 8, 100: 10}
+        spine_under_test_id = 100
+        intitial_qlen_state = []
+        initial_lid_list = [] # leaf IDs for the queue lengths
+        intitial_deferred_state = [0, 0, 0, 0, 0]
+        num_valid_ds_elements = 2 # num bits for available workers for this vcluster in this rack (the worker number will be 2^W)
+        max_linked_leafs = 2
+        workers_start_idx = TEST_VCLUSTER_ID * MAX_VCLUSTER_WORKERS
+        
+        l1_id = 1
+        mcast_group = 1 # Broadcasting according to the number of leafs in vcluster 
+        broadcast_port_ids = [2, 3, 4]
+
+
+        broadcast_ports = []
+        for port_id in broadcast_port_ids:
+            broadcast_ports.append(swports[port_id])
+        
+
+        try:
+            register_write(self.target,
+                self.register_idle_count,
+                register_name='SpineIngress.idle_count.f1',
+                index=TEST_VCLUSTER_ID,
+                register_value=initial_idle_count)
+
+            register_write(self.target,
+                self.register_queue_signal_count,
+                register_name='SpineIngress.queue_signal_count.f1',
+                index=TEST_VCLUSTER_ID,
+                register_value=0)
+
+            for i, qlen in enumerate(intitial_qlen_state):
+                register_write(self.target,
+                        self.register_queue_len_list_1,
+                        register_name='SpineIngress.queue_len_list_1.f1',
+                        index=workers_start_idx + initial_lid_list[i],
+                        register_value=qlen)
+                register_write(self.target,
+                        self.register_queue_len_list_2,
+                        register_name='SpineIngress.queue_len_list_2.f1',
+                        index=workers_start_idx + initial_lid_list[i],
+                        register_value=qlen)
+
+                # Initial state for deferred lists is 0
+                register_write(self.target,
+                        self.register_deferred_queue_len_list_1,
+                        register_name='SpineIngress.deferred_queue_len_list_1.f1',
+                        index=workers_start_idx + initial_lid_list[i],
+                        register_value=intitial_deferred_state[i])
+                register_write(self.target,
+                        self.register_deferred_queue_len_list_2,
+                        register_name='SpineIngress.deferred_queue_len_list_2.f1',
+                        index=workers_start_idx + initial_lid_list[i],
+                        register_value=intitial_deferred_state[i])
+                
+                # Initial leaf ID list for available queue signals
+                register_write(self.target,
+                    self.register_lid_list_1,
+                    register_name='SpineIngress.lid_list_1.f1',
+                    index=workers_start_idx + i,
+                    register_value=initial_lid_list[i])
+                register_write(self.target,
+                    self.register_lid_list_2,
+                    register_name='SpineIngress.lid_list_2.f1',
+                    index=workers_start_idx + i,
+                    register_value=initial_lid_list[i])
+                
+            logger.info("********* Populating Table Entires *********")
+            # Insert qlen unit entires for each leaf in cluster
+            for i, lid in enumerate(initial_lid_list):
+                self.set_queue_len_unit_1.entry_add(
+                    self.target,
+                    [self.set_queue_len_unit_1.make_key([client.KeyTuple('hdr.falcon.cluster_id', TEST_VCLUSTER_ID), client.KeyTuple('falcon_md.random_id_1', lid)])],
+                    [self.set_queue_len_unit_1.make_data([client.DataTuple('cluster_unit', qlen_units[i])],
+                                                 'SpineIngress.act_set_queue_len_unit_1')]
+                    )
+                self.set_queue_len_unit_2.entry_add(
+                    self.target,
+                    [self.set_queue_len_unit_2.make_key([client.KeyTuple('hdr.falcon.cluster_id', TEST_VCLUSTER_ID), client.KeyTuple('falcon_md.random_id_2', lid)])],
+                    [self.set_queue_len_unit_2.make_data([client.DataTuple('cluster_unit', qlen_units[i])],
+                                                 'SpineIngress.act_set_queue_len_unit_2')]
+                    )
+
+            # Insert port mapping for workers
+            for lid in leaf_port_mapping.keys():
+                self.forward_falcon_switch_dst.entry_add(
+                    self.target,
+                    [self.forward_falcon_switch_dst.make_key([client.KeyTuple('hdr.falcon.dst_id', lid)])],
+                    [self.forward_falcon_switch_dst.make_data([client.DataTuple('port', leaf_port_mapping[lid])],
+                                                 'SpineIngress.act_forward_falcon')]
+                )
+
+            # Insert num_valid to set total num leafs for this vcluster
+            self.get_cluster_num_valid_leafs.entry_add(
+                    self.target,
+                    [self.get_cluster_num_valid_leafs.make_key([client.KeyTuple('hdr.falcon.cluster_id', TEST_VCLUSTER_ID)])],
+                    [self.get_cluster_num_valid_leafs.make_data([client.DataTuple('num_leafs', num_valid_ds_elements), client.DataTuple('max_linked_leafs', max_linked_leafs)],
+                                                 'SpineIngress.act_get_cluster_num_valid_leafs')]
+                )
+
+            logger.info("********* Configuring multicast groups (broadcast to leafs) *********")
+            print("Adding MGID table entries")
+            
+            self.mgid_table.entry_add(
+                self.target,
+                [self.mgid_table.make_key(
+                    [client.KeyTuple('$MGID', mcast_group)])])
+            # Allocate a single L1 node
+            # We make a single l1 node with rid =1 
+            # TODO: What is RID?
+            rid = l1_id
+            self.node_table.entry_add(
+                    self.target,
+                    [self.node_table.make_key([
+                        client.KeyTuple('$MULTICAST_NODE_ID', l1_id)])],
+                    [self.node_table.make_data([
+                        client.DataTuple('$MULTICAST_RID', rid),
+                        client.DataTuple('$MULTICAST_LAG_ID', int_arr_val=[]),
+                        client.DataTuple('$DEV_PORT', int_arr_val=[])])]
+                )
+
+            # Add L2 nodes to the L1s
+            self.node_table.entry_mod(
+                    self.target,
+                    [self.node_table.make_key([
+                        client.KeyTuple('$MULTICAST_NODE_ID', l1_id)])],
+                    [self.node_table.make_data([
+                        client.DataTuple('$MULTICAST_RID', rid),
+                        client.DataTuple('$MULTICAST_LAG_ID', int_arr_val=[]),
+                        client.DataTuple('$DEV_PORT', int_arr_val=broadcast_ports)])]
+                )
+
+            self.mgid_table.entry_mod(
+                self.target,
+                [self.mgid_table.make_key([
+                    client.KeyTuple('$MGID', mcast_group)])],
+                [self.mgid_table.make_data([
+                    client.DataTuple('$MULTICAST_NODE_ID', int_arr_val=[l1_id]),
+                    client.DataTuple('$MULTICAST_NODE_L1_XID_VALID', bool_arr_val=[0]),
+                    client.DataTuple('$MULTICAST_NODE_L1_XID', int_arr_val=[0])])])
+            
+            ig_port = swports[random.randint(9, 15)] # port connected to spine
+            idle_remove_pkt = make_falcon_idle_remove_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=initial_idle_list[0], dst_id=spine_under_test_id, seq_num=0x10, **eth_kwargs)
+            testutils.send_packet(self, ig_port, idle_remove_pkt)
+            for i in range(len(broadcast_port_ids)):
+                poll_res = testutils.dp_poll(self)
+                (rcv_device, rcv_port, rcv_pkt, pkt_time) = poll_res
+                print(poll_res)
+                assert int(rcv_port) in broadcast_port_ids, "Received packet on an unexpected port"
+
+            # Make sure no other packets are forwarded
+            poll_res = testutils.dp_poll(self)
+            (rcv_device, rcv_port, rcv_pkt, pkt_time) = poll_res
+            assert rcv_pkt is None, "Received additional packet while expecting no more packets"
+        
+        finally:
+            self.mgid_table.entry_del(
+                    self.target,
+                    [self.mgid_table.make_key([client.KeyTuple('$MGID', mcast_group)])])
+            self.node_table.entry_del(
+                    self.target,
+                    [self.node_table.make_key([client.KeyTuple('$MULTICAST_NODE_ID', l1_id)])])
+
     def remove_idle_leaf(self):
         pipe_id = 0
 

@@ -339,9 +339,7 @@ control SpineIngress(
     }
 
     action set_broadcast_group() { // For anouncing that this leaf knos some idle leafs and no longer needs sq updates
-        ig_intr_tm_md.mcast_grp_a = (MulticastGroupId_t) 1; // Assume all use a single grp level 1
-        
-        ig_intr_tm_md.mcast_grp_b = 0xFF; // TODO: define the "broadcast" mcast_grp
+        ig_intr_tm_md.mcast_grp_a = (MulticastGroupId_t) 1; // In complete deployment should set mcast group according to vcluster ID
     }
 
     action convert_pkt_to_scan_queue() {
@@ -602,6 +600,10 @@ control SpineIngress(
                 if (ig_intr_md.resubmit_flag != 0) {
                     if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
                         reset_deferred_queue_len_list_1.execute(hdr.falcon.dst_id); // Just updated the queue_len_list so write 0 on deferred reg
+                    } else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE) {
+                        if (falcon_md.cluster_idle_count == 0) { // No more idle info so we ask for the queue length signals
+                            convert_pkt_to_scan_queue();
+                        }
                     }
                 } else {
                     if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK && falcon_md.cluster_num_valid_queue_signals > 0) {
@@ -617,11 +619,7 @@ control SpineIngress(
                         convert_pkt_to_probe_idle_resp();
                         hdr.falcon.qlen = falcon_md.random_ds_qlen_2; // Get num_idles for reporting to leaf
                         hdr.falcon.dst_id = hdr.falcon.src_id; // Send back to leaf that sent the probe
-                    } else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_REMOVE) {
-                        if (falcon_md.cluster_idle_count == 0) { // No more idle info so we ask for the queue length signals
-                            convert_pkt_to_scan_queue();
-                        }
-                    } else if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL || hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL_INIT) {
+                    }  else if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL || hdr.falcon.pkt_type == PKT_TYPE_QUEUE_SIGNAL_INIT) {
                         reset_deferred_queue_len_list_1.execute(hdr.falcon.src_id); // Just updated the queue_len_list so write 0 on deferred reg
                     }   
                 }
