@@ -642,19 +642,19 @@ control LeafIngress(
                         @stage(7) {
                             if (hdr.falcon.pkt_type==PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type==PKT_TYPE_TASK_DONE){
                                 reset_deferred_queue_len_list_1.execute(hdr.falcon.src_id); // Just updated the queue_len_list so write 0 on deferred reg
-                            } else {
-                            if (falcon_md.random_id_2 != falcon_md.random_id_1) {
-                                falcon_md.task_resub_hdr.qlen_1 = check_deferred_queue_len_list_1.execute(hdr.falcon.dst_id); // Returns QL[dst_id] + Deferred[dst_id]
-                                falcon_md.task_resub_hdr.ds_index_1 = hdr.falcon.dst_id;
-                            } else { // In case two samples point to the same cell, we do not need to resubmit just increment deferred list
-                                inc_deferred_queue_len_list_1.execute(hdr.falcon.dst_id);
+                            } else if(hdr.falcon.pkt_type==PKT_TYPE_NEW_TASK) { //TODO: check this if condition!
+                                if (falcon_md.random_id_2 != falcon_md.random_id_1) {
+                                    falcon_md.task_resub_hdr.qlen_1 = check_deferred_queue_len_list_1.execute(hdr.falcon.dst_id); // Returns QL[dst_id] + Deferred[dst_id]
+                                    falcon_md.task_resub_hdr.ds_index_1 = hdr.falcon.dst_id;
+                                } else { // In case two samples point to the same cell, we do not need to resubmit just increment deferred list
+                                    inc_deferred_queue_len_list_1.execute(hdr.falcon.dst_id);
                                 }
                             }
                         }
                         @stage(8){
                             if (hdr.falcon.pkt_type==PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type==PKT_TYPE_TASK_DONE){
                                 reset_deferred_queue_len_list_2.execute(hdr.falcon.src_id); // Just updated the queue_len_list so write 0 on deferred reg
-                            } else {
+                            } else if(hdr.falcon.pkt_type==PKT_TYPE_NEW_TASK) {//TODO: check this if condition!
                                 if(falcon_md.task_resub_hdr.qlen_1 == 0) { // This return value means that we do not need to check deffered qlens, difference between samples were large enough that our decision is still valid
                                     inc_deferred_queue_len_list_2.execute(hdr.falcon.dst_id); // increment the second copy to be consistent with first one
                                 } else { // This means our decision might be invalid, need to check the deffered queue lens and resubmit

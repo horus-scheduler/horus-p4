@@ -44,6 +44,8 @@
 // This is the total length of array (shared between vclusters) for tracking leaf queue lengths
 #define MAX_TOTAL_LEAFS  8192 
 
+#define ARRAY_SIZE 573500
+
 /* 
  This limits the number of multicast groups available for selecting spines. Put log (base 2) of max groups here.
  Max number of groups will be 2^MAX_BITS_UPSTREAM_MCAST_GROUP
@@ -59,7 +61,7 @@
 const bit<8> INVALID_VALUE_8bit = 8w0x7F;
 const bit<16> INVALID_VALUE_16bit = 16w0x7FFF;
 
-typedef bit<8> queue_len_t;
+typedef bit<HDR_QUEUE_LEN_SIZE> queue_len_t;
 typedef bit<9> port_id_t;
 typedef bit<16> worker_id_t;
 typedef bit<16> leaf_id_t;
@@ -75,7 +77,7 @@ header falcon_h {
     bit<HDR_LOCAL_CLUSTER_ID_SIZE> local_cluster_id;
     bit<16> src_id;                 // workerID for ToRs. ToRID for spines.
     bit<16> dst_id;
-    bit<8> qlen;                    // Also used for reporting length of idle list (from spine sw to leaf sw)
+    bit<HDR_QUEUE_LEN_SIZE> qlen;                    // Also used for reporting length of idle list (from spine sw to leaf sw)
     bit<HDR_SEQ_NUM_SIZE> seq_num;   
 }
 
@@ -94,10 +96,10 @@ struct eg_metadata_t {
 header task_resub_hdr_t {
     bit<16> ds_index_1; // This shows the index to be updated
     bit<16> ds_index_2; // This shows the index to be updated
-    bit<8> qlen_1;
-    bit<8> qlen_2;
-    bit<8> qlen_unit_1;
-    bit<8> qlen_unit_2;
+    bit<HDR_QUEUE_LEN_SIZE> qlen_1;
+    bit<HDR_QUEUE_LEN_SIZE> qlen_2;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> qlen_unit_1;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> qlen_unit_2;
 }
 
 header remove_resub_hdr_t {

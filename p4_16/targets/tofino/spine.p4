@@ -679,3 +679,33 @@ control SpineIngressDeparser(
         pkt.emit(hdr.falcon);
     }
 }
+
+// Empty egress parser/control blocks
+parser SpineEgressParser(
+        packet_in pkt,
+        out falcon_header_t hdr,
+        out eg_metadata_t eg_md,
+        out egress_intrinsic_metadata_t eg_intr_md) {
+    state start {
+        pkt.extract(eg_intr_md);
+        transition accept;
+    }
+}
+
+control SpineEgressDeparser(
+        packet_out pkt,
+        inout falcon_header_t hdr,
+        in eg_metadata_t eg_md,
+        in egress_intrinsic_metadata_for_deparser_t ig_intr_dprs_md) {
+    apply {}
+}
+
+control SpineEgress(
+        inout falcon_header_t hdr,
+        inout eg_metadata_t eg_md,
+        in egress_intrinsic_metadata_t eg_intr_md,
+        in egress_intrinsic_metadata_from_parser_t eg_intr_md_from_prsr,
+        inout egress_intrinsic_metadata_for_deparser_t ig_intr_dprs_md,
+        inout egress_intrinsic_metadata_for_output_port_t eg_intr_oport_md) {
+    apply {}
+}
