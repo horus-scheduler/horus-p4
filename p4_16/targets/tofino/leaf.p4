@@ -216,6 +216,23 @@ control LeafIngress(
                         rv = value;
                     }
                 };
+            Register<bit<16>, _>(MAX_VCLUSTERS) linked_view_drift; // Spine that ToR has sent last QueueSignal (1 for each vcluster).
+                RegisterAction<bit<16>, _, bit<16>>(linked_view_drift) inc_read_linked_view_drift  = {
+                    void apply(inout bit<16> value, out bit<16> rv) {
+                        if (value == falcon_md.cluster_num_valid_ds - 1) {
+                            rv = 0;
+                            value = 0;
+                        } else {
+                            rv = 1;
+                            value = value + 1;
+                        }
+                    }
+                };
+                RegisterAction<bit<16>, _, bit<16>>(linked_view_drift) reset_linked_view_drift  = {
+                    void apply(inout bit<16> value, out bit<16> rv) {
+                        value = 0;
+                    }
+                };
 
             // Below are registers to hold state in middle of probing Idle list proceess. 
             // So we can compare them when second switch responds.
@@ -278,7 +295,7 @@ control LeafIngress(
             }
             table set_queue_len_unit {
                 key = {
-                    hdr.falcon.local_cluster_id: exact;
+                    hdr.falcon.cluster_id: exact;
                 }
                 actions = {
                     act_set_queue_len_unit;
@@ -303,8 +320,9 @@ control LeafIngress(
             //     ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE;
             // }
 
-            action act_forward_falcon(PortId_t port) {
+            action act_forward_falcon(PortId_t port, mac_addr_t dst_mac) {
                 ig_intr_tm_md.ucast_egress_port = port;
+                hdr.ethernet.dst_addr = dst_mac;
             }
             table forward_falcon_switch_dst {
                 key = {
@@ -426,13 +444,13 @@ control LeafIngress(
                 falcon_md.selected_spine_iq_len = min(falcon_md.last_iq_len, hdr.falcon.qlen);
             }
 
+            
+
             // action convert_pkt_to_sq_signal() {
                 // hdr.falcon.pkt_type = PKT_TYPE_QUEUE_SIGNAL; // This should be set in last stage because effects other stages (if conditions)
                 // hdr.falcon.qlen = falcon_md.aggregate_queue_len;
             // }
             
-
-
             apply {
                 if (hdr.falcon.isValid()) {  // Falcon packet
                     if (ig_intr_md.resubmit_flag != 0) { // Special case: packet is resubmitted just update the indexes
@@ -478,9 +496,10 @@ control LeafIngress(
                         }
 
                         if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_REMOVE) {
-                            remove_linked_sq.execute(hdr.falcon.cluster_id); // Get ID of the Spine that the leaf reports to   
+                            remove_linked_sq.execute(hdr.falcon.cluster_id); 
                         } else {
-                            falcon_md.linked_sq_id = read_update_linked_sq.execute(hdr.falcon.cluster_id);
+                            falcon_md.linked_sq_id = read_update_linked_sq.execute(hdr.falcon.cluster_id); // Get ID of the Spine that the leaf reports to   
+
                         }
 
                         /**Stage 1
@@ -500,11 +519,13 @@ control LeafIngress(
                             if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE || hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
                                 //@st st_aggregate_queue = 0
                                 falcon_md.aggregate_queue_len = update_read_aggregate_queue_len.execute(hdr.falcon.cluster_id);
-
+                                falcon_md.spine_view_ok = inc_read_linked_view_drift.execute(hdr.falcon.cluster_id);
                             } else if(hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_RESPONSE) {
                                 falcon_md.last_iq_len = read_update_spine_iq_len_1.execute(hdr.falcon.cluster_id);
                                 falcon_md.last_probed_id = read_update_spine_probed_id.execute(hdr.falcon.cluster_id);
-                            } 
+                            } else if (hdr.falcon.pkt_type == PKT_TYPE_SCAN_QUEUE_SIGNAL) {
+                                reset_linked_view_drift.execute(hdr.falcon.cluster_id);
+                            }
                         }
                         
                         /** Stage 2
@@ -516,6 +537,7 @@ control LeafIngress(
                         */
                         @stage(2) {
                             falcon_md.mirror_dst_id = hdr.falcon.dst_id; // We want the original packet to reach its destination
+                            
                             if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK){
                                 get_curr_idle_index(); // decrement the index so we read the correct idle worker id
                                 adjust_random_range_ds.apply(); // move the random indexes to be in range of num workers in rack
@@ -524,7 +546,7 @@ control LeafIngress(
                             }
 
                             if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE) {
-                                if (falcon_md.linked_sq_id != INVALID_VALUE_16bit) {
+                                if (falcon_md.linked_sq_id != INVALID_VALUE_16bit && falcon_md.spine_view_ok == 0) { // Need to send a new load signal to spine
                                         /* 
                                         Desired behaviour: Mirror premitive (emit invoked in ingrdeparser) will send the original response
                                         Here we modify the original packet and send it as a ctrl pkt to the linked spine.

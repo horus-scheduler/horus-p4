@@ -1,3 +1,4 @@
+# Test
 import logging
 import time
 from ptf import config
@@ -113,7 +114,7 @@ class TestFalconLeaf(BfRuntimeTest):
         self.forward_falcon_switch_dst = bfrt_info.table_get("LeafIngress.forward_falcon_switch_dst")
         self.forward_falcon_switch_dst.info.key_field_annotation_add("hdr.falcon.dst_id", "wid")
         self.set_queue_len_unit = bfrt_info.table_get("LeafIngress.set_queue_len_unit")
-        self.set_queue_len_unit.info.key_field_annotation_add("hdr.falcon.local_cluster_id", "vcid")
+        self.set_queue_len_unit.info.key_field_annotation_add("hdr.falcon.cluster_id", "vcid")
         self.get_cluster_num_valid = bfrt_info.table_get("LeafIngress.get_cluster_num_valid")
         self.get_cluster_num_valid.info.key_field_annotation_add("hdr.falcon.cluster_id", "vcid")
         self.adjust_random_range_ds = bfrt_info.table_get("LeafIngress.adjust_random_range_ds")
@@ -179,10 +180,10 @@ class TestFalconLeaf(BfRuntimeTest):
 
         initial_idle_list = []
         initial_idle_count = len(initial_idle_list)
-        wid_port_mapping = {11:1, 12: 2, 13:3, 14: 4, 15:5, 16: 6, 17:7, 18: 8, 100: 10}
+        wid_port_mapping = {11:1, 12: 2, 13: 2, 14:1, 100: 10}
         spine_port_mapping = {1001: 12, 1002: 13}
+        port_mac_mapping = {1: 'F8:F2:1E:3A:13:EC', 2: 'F8:F2:1E:3A:13:C4', 10:'AA:BB:CC:DD:EE:FF', 12:SAMPLE_ETH_DST, 13:SAMPLE_ETH_DST}
         spine_port_mapping = collections.OrderedDict(sorted(spine_port_mapping.items()))
-        spine_idle_qlen = [2, 6]
         initial_agg_qlen = 10
         qlen_unit = 0b00000010 # assuming 3bit showing fraction and 5bit decimal: 0.25 (4 workers in this rack)
 
@@ -190,9 +191,10 @@ class TestFalconLeaf(BfRuntimeTest):
         initial_linked_sq_spine = INVALID_VALUE_16bit # ID of linked spine for SQ link (Invalid = 0x00F0)
         
         # Scenario when <num_task_done> workers finish their task 
-        num_task_done = 1
+        num_task_done = 10
+        num_runs = 2 # Number of times to link and unlink to spine
 
-        num_valid_ds_elements = 2 # num bits for available workers for this vcluster in this rack (the worker number will be 2^W)
+        num_valid_ds_elements = 4 # num bits for available workers for this vcluster in this rack (the worker number will be 2^W)
         num_valid_us_elements = 1
 
         register_write(self.target,
@@ -245,13 +247,14 @@ class TestFalconLeaf(BfRuntimeTest):
                 pipe_id=pipe_id,
                 index=i,
                 expected_register_value=initial_idle_list[i])
+
         logger.info("********* Populating Table Entires *********")
         # Insert port mapping for workers
         for wid in wid_port_mapping.keys():
             self.forward_falcon_switch_dst.entry_add(
                 self.target,
                 [self.forward_falcon_switch_dst.make_key([client.KeyTuple('hdr.falcon.dst_id', wid)])],
-                [self.forward_falcon_switch_dst.make_data([client.DataTuple('port', wid_port_mapping[wid])],
+                [self.forward_falcon_switch_dst.make_data([client.DataTuple('port', wid_port_mapping[wid]), client.DataTuple('dst_mac', client.mac_to_bytes(port_mac_mapping[wid_port_mapping[wid]]))],
                                              'LeafIngress.act_forward_falcon')]
             )
         logger.info("Inserted entries in forward_falcon_switch_dst table with key-values = %s ", str(wid_port_mapping))
@@ -266,13 +269,13 @@ class TestFalconLeaf(BfRuntimeTest):
             self.forward_falcon_switch_dst.entry_add(
                 self.target,
                 [self.forward_falcon_switch_dst.make_key([client.KeyTuple('hdr.falcon.dst_id', spine_id)])],
-                [self.forward_falcon_switch_dst.make_data([client.DataTuple('port', spine_port_mapping[spine_id])],
+                [self.forward_falcon_switch_dst.make_data([client.DataTuple('port', spine_port_mapping[spine_id]), client.DataTuple('dst_mac', client.mac_to_bytes(port_mac_mapping[spine_port_mapping[spine_id]]))],
                                              'LeafIngress.act_forward_falcon')]
             )
         # Insert qlen unit entries
         self.set_queue_len_unit.entry_add(
                 self.target,
-                [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.falcon.local_cluster_id', TEST_VCLUSTER_ID)])],
+                [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.falcon.cluster_id', TEST_VCLUSTER_ID)])],
                 [self.set_queue_len_unit.make_data([client.DataTuple('cluster_unit', qlen_unit)],
                                              'LeafIngress.act_set_queue_len_unit')]
             )
@@ -284,22 +287,22 @@ class TestFalconLeaf(BfRuntimeTest):
             )
         self.adjust_random_range_us.entry_add(
                 self.target,
-                [self.adjust_random_range_us.make_key([client.KeyTuple('falcon_md.cluster_num_valid_us', 1)])],
+                [self.adjust_random_range_us.make_key([client.KeyTuple('falcon_md.cluster_num_valid_us', 2)])],
                 [self.adjust_random_range_us.make_data([], 'LeafIngress.adjust_random_worker_range_1')]
             )
         self.adjust_random_range_us.entry_add(
                 self.target,
-                [self.adjust_random_range_us.make_key([client.KeyTuple('falcon_md.cluster_num_valid_us', 2)])],
+                [self.adjust_random_range_us.make_key([client.KeyTuple('falcon_md.cluster_num_valid_us', 4)])],
                 [self.adjust_random_range_us.make_data([], 'LeafIngress.adjust_random_worker_range_2')]
             )
         self.adjust_random_range_us.entry_add(
                 self.target,
-                [self.adjust_random_range_us.make_key([client.KeyTuple('falcon_md.cluster_num_valid_us', 4)])],
+                [self.adjust_random_range_us.make_key([client.KeyTuple('falcon_md.cluster_num_valid_us', 16)])],
                 [self.adjust_random_range_us.make_data([], 'LeafIngress.adjust_random_worker_range_4')]
             )
         self.adjust_random_range_us.entry_add(
                 self.target,
-                [self.adjust_random_range_us.make_key([client.KeyTuple('falcon_md.cluster_num_valid_us', 8)])],
+                [self.adjust_random_range_us.make_key([client.KeyTuple('falcon_md.cluster_num_valid_us', 256)])],
                 [self.adjust_random_range_us.make_data([], 'LeafIngress.adjust_random_worker_range_8')]
             )
 
@@ -318,51 +321,63 @@ class TestFalconLeaf(BfRuntimeTest):
             ], "$normal")
             self.mirror_cfg_table.entry_add(self.target, [ mirror_cfg_bfrt_key ], [ mirror_cfg_bfrt_data ])
 
+        for run_id in range(num_runs):
+            logger.info("\n********* Sending PKT_TYPE_SCAN_QUEUE_SIGNAL packet from spine *********\n")
+            dst_id = 100 # this will be identifier for client (receiving reply pkt)
+            src_id = spine_port_mapping.keys()[0]
+            ig_port = spine_port_mapping[src_id]
+            scan_queue_pkt = make_falcon_scan_queue_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, seq_num=0x10+i, **eth_kwargs)
+            expected_pkt = make_falcon_queue_signal_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=src_id, seq_num=0x10+i, is_init=True, **eth_kwargs)
+            logger.info("Sending packet on port %d", ig_port)
+            testutils.send_packet(self, ig_port, scan_queue_pkt)
+            logger.info(" Verifying expected QUEUE_SIGNAL_INIT on port %d", ig_port)
+            testutils.verify_packets(self, expected_pkt, [ig_port])
+            # poll_res = testutils.dp_poll(self)
+            # (rcv_device, rcv_port, rcv_pkt, pkt_time) = poll_res
+            # print(poll_res)
+            test_register_read(self.target,
+                self.register_linked_sq_sched,
+                'LeafIngress.linked_sq_sched.f1',
+                pipe_id,
+                TEST_VCLUSTER_ID, 
+                src_id)
+            for i in range(num_task_done):
+                task_done_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=4, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+                
+                logger.info("\n********* Sending TASK_DONE packet from a worker *********")
+                testutils.send_packet(self, ig_port, task_done_packet)
+                
+                logger.info("Manually verify: TASK_DONE should be forwarded to its destination")
+                if (i%num_valid_ds_elements == 0): # This is were an additional update message should be sent to spine
+                    logger.info("***** fManually verify: a QUEUE_SIGNAL should be sent to linked spine *****") 
+                for i in range(2):
+                    poll_res = testutils.dp_poll(self)
+                    (rcv_device, rcv_port, rcv_pkt, pkt_time) = poll_res
+                    print(poll_res)
 
-        logger.info("\n********* Sending PKT_TYPE_SCAN_QUEUE_SIGNAL packet from spine *********\n")
-        dst_id = 100 # this will be identifier for client (receiving reply pkt)
-        src_id = spine_port_mapping.keys()[0]
-        ig_port = spine_port_mapping[src_id]
-        scan_queue_pkt = make_falcon_scan_queue_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, seq_num=0x10+i, **eth_kwargs)
-        expected_pkt = make_falcon_queue_signal_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=src_id, seq_num=0x10+i, is_init=True, **eth_kwargs)
-        logger.info("Sending packet on port %d", ig_port)
-        testutils.send_packet(self, ig_port, scan_queue_pkt)
-        logger.info(" Verifying expected QUEUE_SIGNAL_INIT on port %d", ig_port)
-        testutils.verify_packets(self, expected_pkt, [ig_port])
-        # poll_res = testutils.dp_poll(self)
-        # (rcv_device, rcv_port, rcv_pkt, pkt_time) = poll_res
-        # print(poll_res)
-        test_register_read(self.target,
-            self.register_linked_sq_sched,
-            'LeafIngress.linked_sq_sched.f1',
-            pipe_id,
-            TEST_VCLUSTER_ID, 
-            src_id)
-        
-        task_done_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=4, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
-        
-        logger.info("\n********* Sending TASK_DONE packet from a worker *********")
-        testutils.send_packet(self, ig_port, task_done_packet)
-        
-        logger.info("********* Manually verify: the TASK_DONE should be forwarded to its destination, a QUEUE_SIGNAL should be sent to linked spine *********")
-        for i in range(2):
+            logger.info("\n********* Sending QUEUE_REMOVE packet from the linked spine *********")
+            queue_remove_pkt = make_falcon_queue_remove_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, seq_num=0x10+i, **eth_kwargs)
+            testutils.send_packet(self, ig_port, queue_remove_pkt)
             poll_res = testutils.dp_poll(self)
-            (rcv_device, rcv_port, rcv_pkt, pkt_time) = poll_res
-            print(poll_res)
 
-        logger.info("\n********* Sending QUEUE_REMOVE packet from the linked spine *********")
-        queue_remove_pkt = make_falcon_queue_remove_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, seq_num=0x10+i, **eth_kwargs)
-        testutils.send_packet(self, ig_port, queue_remove_pkt)
-        poll_res = testutils.dp_poll(self)
-
-        logger.info("\n********* Verifying switch internal state: linked spine should be INVALID value *********")
-        test_register_read(self.target,
-            self.register_linked_sq_sched,
-            'LeafIngress.linked_sq_sched.f1',
-            pipe_id,
-            TEST_VCLUSTER_ID, 
-            INVALID_VALUE_16bit)
-
+            logger.info("\n********* Verifying switch internal state: linked spine should be INVALID value *********")
+            test_register_read(self.target,
+                self.register_linked_sq_sched,
+                'LeafIngress.linked_sq_sched.f1',
+                pipe_id,
+                TEST_VCLUSTER_ID, 
+                INVALID_VALUE_16bit)
+            for i in range(4):
+                task_done_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=4, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+                
+                logger.info("\n********* After unlink: Sending TASK_DONE packet from worker  *********")
+                testutils.send_packet(self, ig_port, task_done_packet)
+                
+                logger.info("****** Manually verify: Only the TASK_DONE should be forwarded to its destination and no more QUEUE_SIGNAL messages ******")
+                for i in range(2):
+                    poll_res = testutils.dp_poll(self)
+                    (rcv_device, rcv_port, rcv_pkt, pkt_time) = poll_res
+                    print(poll_res)
         for wid in wid_port_mapping.keys():
             mirror_cfg_bfrt_key  = self.mirror_cfg_table.make_key([client.KeyTuple('$sid', wid)])
             self.mirror_cfg_table.entry_del(self.target, [mirror_cfg_bfrt_key]) 
@@ -490,7 +505,7 @@ class TestFalconLeaf(BfRuntimeTest):
         # Insert qlen unit entries
         self.set_queue_len_unit.entry_add(
                 self.target,
-                [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.falcon.local_cluster_id', TEST_VCLUSTER_ID)])],
+                [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.falcon.cluster_id', TEST_VCLUSTER_ID)])],
                 [self.set_queue_len_unit.make_data([client.DataTuple('cluster_unit', qlen_unit)],
                                              'LeafIngress.act_set_queue_len_unit')]
             )
@@ -540,9 +555,9 @@ class TestFalconLeaf(BfRuntimeTest):
         src_id = wid_port_mapping.keys()[i]
         ig_port = wid_port_mapping[src_id]
 
-        task_done_idle_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, q_len=i, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
-        expected_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, q_len=i, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
-        expected_packet_probe_idle = make_falcon_probe_idle_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=1001, pkt_len=0, seq_num=0x10+i, **eth_kwargs)            
+        task_done_idle_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, q_len=i, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+        expected_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, q_len=i, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+        expected_packet_probe_idle = make_falcon_probe_idle_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=1001, pkt_len=0, seq_num=0x10+i, **eth_kwargs)            
         logger.info("Sending done_idle packet on port %d", ig_port)
         testutils.send_packet(self, ig_port, task_done_idle_packet)
         #testutils.verify_packets(self, expected_packet_probe_idle, [12, 13])
@@ -563,7 +578,7 @@ class TestFalconLeaf(BfRuntimeTest):
 
         logger.info("\n*** Spine 1 sends idle response ***")
         spine_src_1 = spine_port_mapping.keys()[0]
-        probe_resp_1 = make_falcon_probe_idle_response_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=spine_src_1, dst_id=dst_id, seq_num=0x10+i, q_len=spine_idle_qlen[0], **eth_kwargs)
+        probe_resp_1 = make_falcon_probe_idle_response_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=spine_src_1, dst_id=dst_id, seq_num=0x10+i, q_len=spine_idle_qlen[0], **eth_kwargs)
         testutils.send_packet(self, ig_port, probe_resp_1)
         logger.info("\n*** Leaf should send another probe to random spine ***")
         poll_res = testutils.dp_poll(self)
@@ -585,7 +600,7 @@ class TestFalconLeaf(BfRuntimeTest):
 
         logger.info("\n*** Spine 2 sends idle response ***")
         spine_src_2 = spine_port_mapping.keys()[1]
-        probe_resp_2 = make_falcon_probe_idle_response_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=spine_src_2, dst_id=dst_id, seq_num=0x10+i, q_len=spine_idle_qlen[1], **eth_kwargs)
+        probe_resp_2 = make_falcon_probe_idle_response_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=spine_src_2, dst_id=dst_id, seq_num=0x10+i, q_len=spine_idle_qlen[1], **eth_kwargs)
         testutils.send_packet(self, ig_port, probe_resp_2)
         logger.info("\n*** Leaf should send an idle signal to selected spine (one with min idle queue length)***")
         poll_res = testutils.dp_poll(self)
@@ -702,7 +717,7 @@ class TestFalconLeaf(BfRuntimeTest):
         # Insert qlen unit entries
         self.set_queue_len_unit.entry_add(
                 self.target,
-                [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.falcon.local_cluster_id', TEST_VCLUSTER_ID)])],
+                [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.falcon.cluster_id', TEST_VCLUSTER_ID)])],
                 [self.set_queue_len_unit.make_data([client.DataTuple('cluster_unit', qlen_unit)],
                                              'LeafIngress.act_set_queue_len_unit')]
             )
@@ -724,8 +739,8 @@ class TestFalconLeaf(BfRuntimeTest):
             src_id = random.randint(1, 255)
             dst_id = random.randint(1, 255)
 
-            new_task_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=random.randint(1, 255), pkt_len=0, seq_num=0x10+i, **eth_kwargs)
-            expected_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=initial_idle_list[idle_pointer_stack], pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+            new_task_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=random.randint(1, 255), pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+            expected_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=initial_idle_list[idle_pointer_stack], pkt_len=0, seq_num=0x10+i, **eth_kwargs)
             
             logger.info("Sending task packet on port %d", ig_port)
             testutils.send_packet(self, ig_port, new_task_packet)
@@ -743,9 +758,9 @@ class TestFalconLeaf(BfRuntimeTest):
             dst_id = 100 # this will be identifier for client (receiving reply pkt)
             src_id = initial_idle_list[i]
             ig_port = wid_port_mapping[initial_idle_list[i]]
-            task_done_idle_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
-            expected_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, pkt_len=0, seq_num=0x10+i, **eth_kwargs)            
-            expected_packet_probe_idle = make_falcon_probe_idle_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, pkt_len=0, seq_num=0x10+i, **eth_kwargs)            
+            task_done_idle_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+            expected_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, pkt_len=0, seq_num=0x10+i, **eth_kwargs)            
+            expected_packet_probe_idle = make_falcon_probe_idle_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, pkt_len=0, seq_num=0x10+i, **eth_kwargs)            
             logger.info("Sending done_idle packet on port %d", ig_port)
             testutils.send_packet(self, ig_port, task_done_idle_packet)
             
@@ -831,23 +846,23 @@ class TestFalconLeaf(BfRuntimeTest):
         # TODO: can we add constant entrires for this table in .p4 file?
         self.adjust_random_range_ds.entry_add(
                 self.target,
-                [self.adjust_random_range.make_key([client.KeyTuple('falcon_md.cluster_num_valid_ds', 1)])],
-                [self.adjust_random_range.make_data([], 'LeafIngress.adjust_random_worker_range_1')]
+                [self.adjust_random_range_ds.make_key([client.KeyTuple('falcon_md.cluster_num_valid_ds', 1)])],
+                [self.adjust_random_range_ds.make_data([], 'LeafIngress.adjust_random_worker_range_1')]
             )
         self.adjust_random_range_ds.entry_add(
                 self.target,
-                [self.adjust_random_range.make_key([client.KeyTuple('falcon_md.cluster_num_valid_ds', 2)])],
-                [self.adjust_random_range.make_data([], 'LeafIngress.adjust_random_worker_range_2')]
+                [self.adjust_random_range_ds.make_key([client.KeyTuple('falcon_md.cluster_num_valid_ds', 2)])],
+                [self.adjust_random_range_ds.make_data([], 'LeafIngress.adjust_random_worker_range_2')]
             )
         self.adjust_random_range_ds.entry_add(
                 self.target,
-                [self.adjust_random_range.make_key([client.KeyTuple('falcon_md.cluster_num_valid_ds', 4)])],
-                [self.adjust_random_range.make_data([], 'LeafIngress.adjust_random_worker_range_4')]
+                [self.adjust_random_range_ds.make_key([client.KeyTuple('falcon_md.cluster_num_valid_ds', 4)])],
+                [self.adjust_random_range_ds.make_data([], 'LeafIngress.adjust_random_worker_range_4')]
             )
         self.adjust_random_range_ds.entry_add(
                 self.target,
-                [self.adjust_random_range.make_key([client.KeyTuple('falcon_md.cluster_num_valid_ds', 8)])],
-                [self.adjust_random_range.make_data([], 'LeafIngress.adjust_random_worker_range_8')]
+                [self.adjust_random_range_ds.make_key([client.KeyTuple('falcon_md.cluster_num_valid_ds', 8)])],
+                [self.adjust_random_range_ds.make_data([], 'LeafIngress.adjust_random_worker_range_8')]
             )
 
         # Insert port mapping for workers
@@ -863,7 +878,7 @@ class TestFalconLeaf(BfRuntimeTest):
         # Insert qlen unit entries
         self.set_queue_len_unit.entry_add(
                 self.target,
-                [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.falcon.local_cluster_id', TEST_VCLUSTER_ID)])],
+                [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.falcon.cluster_id', TEST_VCLUSTER_ID)])],
                 [self.set_queue_len_unit.make_data([client.DataTuple('cluster_unit', qlen_unit)],
                                              'LeafIngress.act_set_queue_len_unit')]
             )
@@ -991,6 +1006,7 @@ class TestFalconLeaf(BfRuntimeTest):
                 pipe_id,
                 wid,
                 0)
+
 class TestFalconSpine(BfRuntimeTest):
     def setUp(self):
         client_id = 0

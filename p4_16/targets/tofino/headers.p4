@@ -74,7 +74,6 @@ header empty_t {
 header falcon_h {
     bit<HDR_PKT_TYPE_SIZE> pkt_type;
     bit<HDR_CLUSTER_ID_SIZE> cluster_id;
-    bit<HDR_LOCAL_CLUSTER_ID_SIZE> local_cluster_id;
     bit<16> src_id;                 // workerID for ToRs. ToRID for spines.
     bit<16> dst_id;
     bit<HDR_QUEUE_LEN_SIZE> qlen;                    // Also used for reporting length of idle list (from spine sw to leaf sw)
@@ -155,6 +154,7 @@ struct falcon_metadata_t {
 	task_resub_hdr_t task_resub_hdr;
 	remove_resub_hdr_t remove_resub_hdr;
 	bit<8> idle_len_8bit;
+    bit<16> spine_view_ok;
 
 }
 
