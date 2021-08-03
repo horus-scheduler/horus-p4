@@ -1,0 +1,41 @@
+{
+    "PortToIf" : [
+        { "device_port" :  0, "if" : "port0"  },
+        { "device_port" :  1, "if" : "port1"  },
+        { "device_port" :  2, "if" : "port2"  },
+        { "device_port" :  3, "if" : "port3"  },
+        { "device_port" :  4, "if" : "port4"  },
+        { "device_port" :  5, "if" : "port5"  },
+        { "device_port" :  6, "if" : "port6"  },
+        { "device_port" :  7, "if" : "port7"  },
+        { "device_port" : 64, "if" : "port64" },
+        
+        { "device_port" :128, "if" : "port128"},
+        { "device_port" :129, "if" : "port129"},
+        { "device_port" :130, "if" : "port130"},
+        { "device_port" :131, "if" : "port131"},
+        { "device_port" :132, "if" : "port132"},
+        { "device_port" :133, "if" : "port133"},
+        { "device_port" :134, "if" : "port134"},
+        { "device_port" :135, "if" : "port135"},
+        
+        { "device_port" :256, "if" : "port256"},
+        { "device_port" :257, "if" : "port257"},
+        { "device_port" :258, "if" : "port258"},
+        { "device_port" :259, "if" : "port259"},
+        { "device_port" :260, "if" : "port260"},
+        { "device_port" :261, "if" : "port261"},
+        { "device_port" :262, "if" : "port262"},
+        { "device_port" :263, "if" : "port263"},
+        { "device_port" :320, "if" : "port320"},
+
+        { "device_port" :384, "if" : "port384"},
+        { "device_port" :385, "if" : "port385"},
+        { "device_port" :386, "if" : "port386"},
+        { "device_port" :387, "if" : "port387"},
+        { "device_port" :388, "if" : "port388"},
+        { "device_port" :389, "if" : "port389"},
+        { "device_port" :390, "if" : "port390"},
+        { "device_port" :391, "if" : "port391"}
+    ]
+}
