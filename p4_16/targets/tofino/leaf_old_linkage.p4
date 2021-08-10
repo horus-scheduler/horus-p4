@@ -35,6 +35,7 @@
  *   Comparing two metadeta feilds (with < >) in apply{} blcok resulted in error. (Too complex). Only can use == on two meta feilds!
 */
 
+
 control LeafIngress(
         inout falcon_header_t hdr,
         inout falcon_metadata_t falcon_md,
@@ -186,10 +187,10 @@ control LeafIngress(
                 };
             
             Register<switch_id_t, _>(MAX_VCLUSTERS) linked_iq_sched; // Spine that ToR has sent last IdleSignal (1 for each vcluster).
-                RegisterAction<bit<16>, _, bit<16>>(linked_iq_sched) reset_linked_iq  = {
+                RegisterAction<bit<16>, _, bit<16>>(linked_iq_sched) read_reset_linked_iq  = {
                     void apply(inout bit<16> value, out bit<16> rv) {
-                        rv = value; // Return value before reset so leaf can unlink (send idle remove to the linked spine)
-                        value = INVALID_VALUE_16bit;
+                        rv = value;
+                        value = 0xFFFF;
                     }
                 };
                 RegisterAction<bit<16>, _, bit<16>>(linked_iq_sched) write_linked_iq  = {
@@ -227,11 +228,39 @@ control LeafIngress(
                         }
                     }
                 };
-                // RegisterAction<bit<16>, _, bit<16>>(linked_view_drift) reset_linked_view_drift  = {
-                //     void apply(inout bit<16> value, out bit<16> rv) {
-                //         value = 0;
-                //     }
-                // };
+                RegisterAction<bit<16>, _, bit<16>>(linked_view_drift) reset_linked_view_drift  = {
+                    void apply(inout bit<16> value, out bit<16> rv) {
+                        value = 0;
+                    }
+                };
+
+            // Below are registers to hold state in middle of probing Idle list proceess. 
+            // So we can compare them when second switch responds.
+            // IMPORTANT: Tofino Bug: comparison with largest value (e.g value==0xFF) in stateful ALU returns false even when value is 0xFF!
+            // However comparison with 0 works fine! Maybe this is a bug in *tofino model* only. But no posts in community forums stated such bug! 
+            // TODO: Report to community
+            Register<queue_len_t, _>(MAX_VCLUSTERS) spine_iq_len_1; // Length of Idle list for first probed spine (1 for each vcluster).
+                RegisterAction<queue_len_t, _, queue_len_t>(spine_iq_len_1) read_update_spine_iq_len_1  = {
+                    void apply(inout queue_len_t value, out queue_len_t rv) {
+                        rv = value;
+                        if (value == INVALID_VALUE_8bit) { // Value==INVALID, So this is the first probe and we store the data
+                            value = hdr.falcon.qlen;
+                        } else { // Value found so this is the second probe and we load the data
+                            value = INVALID_VALUE_8bit;
+                        }
+                    }
+                };
+                Register<bit<16>, _>(MAX_VCLUSTERS) spine_probed_id; // ID of the first probed spine (1 for each vcluster)
+                RegisterAction<bit<16>, _, bit<16>>(spine_probed_id) read_update_spine_probed_id  = {
+                    void apply(inout bit<16> value, out bit<16> rv) {
+                        rv = value;
+                        if (value == INVALID_VALUE_16bit) { // Value==INVALID, So this is the first probe and we store the data.
+                            value = hdr.falcon.src_id;
+                        } else { // Value was valid so this is the second probe and we load the data
+                            value = INVALID_VALUE_16bit;
+                        }
+                    }
+                };
             
             /* 
               As a workaround since we can't select the random range in runtime. 
@@ -379,7 +408,7 @@ control LeafIngress(
             }
 
             action act_get_spine_dst_id(bit <16> spine_dst_id){
-                falcon_md.spine_to_link_iq = spine_dst_id;
+                hdr.falcon.dst_id = spine_dst_id;
             }
             table get_spine_dst_id {
                 key = {
@@ -410,6 +439,17 @@ control LeafIngress(
             action calculate_queue_len_diff(){
                 falcon_md.queue_len_diff = falcon_md.not_selected_ds_qlen - falcon_md.selected_ds_qlen;
             }
+
+            action compare_spine_iq_len() {
+                falcon_md.selected_spine_iq_len = min(falcon_md.last_iq_len, hdr.falcon.qlen);
+            }
+
+            
+
+            // action convert_pkt_to_sq_signal() {
+                // hdr.falcon.pkt_type = PKT_TYPE_QUEUE_SIGNAL; // This should be set in last stage because effects other stages (if conditions)
+                // hdr.falcon.qlen = falcon_md.aggregate_queue_len;
+            // }
             
             apply {
                 if (hdr.falcon.isValid()) {  // Falcon packet
@@ -451,12 +491,15 @@ control LeafIngress(
                             falcon_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.falcon.cluster_id);
                         } else if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
                             falcon_md.cluster_idle_count = read_and_dec_idle_count.execute(hdr.falcon.cluster_id); // Read last idle count for vcluster
+                        } else if (hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_RESPONSE) {
+                            falcon_md.cluster_idle_count = read_idle_count.execute(hdr.falcon.cluster_id); // Read last idle count for vcluster
                         }
 
                         if (hdr.falcon.pkt_type == PKT_TYPE_QUEUE_REMOVE) {
                             remove_linked_sq.execute(hdr.falcon.cluster_id); 
                         } else {
                             falcon_md.linked_sq_id = read_update_linked_sq.execute(hdr.falcon.cluster_id); // Get ID of the Spine that the leaf reports to   
+
                         }
 
                         /**Stage 1
@@ -476,6 +519,12 @@ control LeafIngress(
                             if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE || hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
                                 //@st st_aggregate_queue = 0
                                 falcon_md.aggregate_queue_len = update_read_aggregate_queue_len.execute(hdr.falcon.cluster_id);
+                                falcon_md.spine_view_ok = inc_read_linked_view_drift.execute(hdr.falcon.cluster_id);
+                            } else if(hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_RESPONSE) {
+                                falcon_md.last_iq_len = read_update_spine_iq_len_1.execute(hdr.falcon.cluster_id);
+                                falcon_md.last_probed_id = read_update_spine_probed_id.execute(hdr.falcon.cluster_id);
+                            } else if (hdr.falcon.pkt_type == PKT_TYPE_SCAN_QUEUE_SIGNAL) {
+                                reset_linked_view_drift.execute(hdr.falcon.cluster_id);
                             }
                         }
                         
@@ -497,21 +546,7 @@ control LeafIngress(
                             }
 
                             if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE) {
-                                falcon_md.spine_view_ok = inc_read_linked_view_drift.execute(hdr.falcon.cluster_id);
-                            } 
-
-                        } 
-                        /** Stage 3
-                         * Register:
-                         * idle_list, dep: idle_count @st0, get_idle_index() @st 1, get_curr_idle_index() @st 2
-                        */ 
-                        @stage(3) {
-                            if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE) { 
-                                add_to_idle_list.execute(falcon_md.idle_ds_index);
-                                if (falcon_md.cluster_idle_count == 0) { // State of rack has just changed to Idle so it should join idle list of a random spine
-                                    get_spine_dst_id.apply();
-                                }
-                                if (falcon_md.spine_view_ok == 0) { // Need to send a new load signal to spine 
+                                if (falcon_md.linked_sq_id != INVALID_VALUE_16bit && falcon_md.spine_view_ok == 0) { // Need to send a new load signal to spine
                                         /* 
                                         Desired behaviour: Mirror premitive (emit invoked in ingrdeparser) will send the original response
                                         Here we modify the original packet and send it as a ctrl pkt to the linked spine.
@@ -522,53 +557,88 @@ control LeafIngress(
                                         hdr.falcon.dst_id = falcon_md.linked_sq_id;
                                         ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE; 
                                 }
+                            } else if (hdr.falcon.pkt_type == PKT_TYPE_SCAN_QUEUE_SIGNAL) {
+                                if (falcon_md.linked_sq_id == INVALID_VALUE_16bit) { // Not linked to another spine so we reply back with queue signal
+                                    hdr.falcon.pkt_type = PKT_TYPE_QUEUE_SIGNAL_INIT; // This should be set in last stage because effects other stages (if conditions)
+                                    hdr.falcon.qlen = falcon_md.aggregate_queue_len;
+                                    hdr.falcon.dst_id = hdr.falcon.src_id;
+                                }
+                            } else if (hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_RESPONSE){
+                                compare_spine_iq_len();   
+                            }
+
+                        } 
+                        /** Stage 3
+                         * Register:
+                         * idle_list, dep: idle_count @st0, get_idle_index() @st 1, get_curr_idle_index() @st 2
+                        */ 
+                        @stage(3) {
+                            if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE) { 
+                                add_to_idle_list.execute(falcon_md.idle_ds_index);
+
                             } else if(hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
                                 if (falcon_md.cluster_idle_count > 0) {
                                     falcon_md.idle_ds_id = read_idle_list.execute(falcon_md.idle_ds_index);
                                 } else {
                                     offset_random_ids();
                                 }
+                            } else if (hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_RESPONSE) {
+                                if (falcon_md.last_probed_id != INVALID_VALUE_16bit) { // This is the second probe response
+                                    if (falcon_md.selected_spine_iq_len == falcon_md.last_iq_len) { // last spine selected
+                                        falcon_md.spine_to_link_iq = falcon_md.last_probed_id;
+                                        hdr.falcon.dst_id = falcon_md.last_probed_id;
+                                    } else {
+                                        falcon_md.spine_to_link_iq = hdr.falcon.src_id;
+                                        hdr.falcon.dst_id = hdr.falcon.src_id;
+                                    }
+                                }
                             }
-                        }
+                        } 
                         
                         /** Stage 4
                          * 
                         */
                         @stage(4) {
-                            if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
-                                if (falcon_md.cluster_idle_count == 0) {
-                                    falcon_md.random_ds_qlen_1 = read_queue_len_list_1.execute(falcon_md.random_id_1);
-                                    falcon_md.random_ds_qlen_2 = read_queue_len_list_2.execute(falcon_md.random_id_2);
-                                } else if (falcon_md.cluster_idle_count == 1) { // Rack had 1 idle worker and now it is not idle anymore
-                                    falcon_md.removed_idle_link = reset_linked_iq.execute(hdr.falcon.cluster_id); // Rack not idle anymore, remove idle linkage
-                                }
+                            if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK && falcon_md.cluster_idle_count == 0) {
+                                falcon_md.random_ds_qlen_1 = read_queue_len_list_1.execute(falcon_md.random_id_1);
+                                falcon_md.random_ds_qlen_2 = read_queue_len_list_2.execute(falcon_md.random_id_2);
                             } else if(hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE) {
                                 write_queue_len_list_1.execute(hdr.falcon.src_id);
                                 write_queue_len_list_2.execute(hdr.falcon.src_id);
-                                if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE && falcon_md.cluster_idle_count == 0) { // Only update linkage if this is the leaf have just became idle
+                            } 
+                            
+                            // if (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE) {
+                            //     if (falcon_md.linked_sq_id != INVALID_VALUE_16bit) {
+                                    
+                            //         // Set different mirror types for different headers if needed
+                            //         ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE; 
+                            //     }
+                            // }  
+                            if (hdr.falcon.pkt_type == PKT_TYPE_PROBE_IDLE_RESPONSE || (hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE && falcon_md.cluster_idle_count == 0)) { // Only update linkage if this is the leaf have just became idle
+                                if (falcon_md.last_probed_id != INVALID_VALUE_16bit) { // This is the second probe response
                                     write_linked_iq.execute(hdr.falcon.cluster_id);
-                                    hdr.falcon.dst_id = falcon_md.spine_to_link_iq;
                                     hdr.falcon.pkt_type = PKT_TYPE_IDLE_SIGNAL; // Now change to idle signal to notify the selected spine
-                                    ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE; 
-                                } 
-                            }  
+                                } else {
+                                    if(hdr.falcon.pkt_type == PKT_TYPE_TASK_DONE_IDLE){
+                                        ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE; 
+                                    }
+                                    hdr.falcon.pkt_type = PKT_TYPE_PROBE_IDLE_QUEUE; // Change packet type to probe
+                                    get_spine_dst_id.apply();
+                                }
+                            }
                         }
 
-                        // /** Stage 5
-                        //  * 
-                        // */
-                        @stage(5) {
-                            if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK) {
-                                if (falcon_md.cluster_idle_count == 0) {
-                                    compare_queue_len();
-                                    get_larger_queue_len();
-                                } else if (falcon_md.cluster_idle_count == 1) {
-                                    hdr.falcon.dst_id = falcon_md.removed_idle_link; // Send idle remove packet to the linked spine
-                                    hdr.falcon.pkt_type = PKT_TYPE_IDLE_REMOVE;
-                                    falcon_md.mirror_dst_id = falcon_md.idle_ds_id;  // Mirror the original packet to idle worker
-                                    ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE;
-                                }
-                            } 
+                        /** Stage 5
+                         * 
+                        */
+                        @stage(5){
+                        // packet is resubmitted
+                        
+                        if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK && falcon_md.cluster_idle_count == 0) {
+                            compare_queue_len();
+                            get_larger_queue_len();
+                        }
+                        
                         }
 
                         /* Stage 6
