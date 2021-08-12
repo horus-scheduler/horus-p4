@@ -349,7 +349,7 @@ class TestFalconLeaf(BfRuntimeTest):
                 
                 logger.info("Manually verify: TASK_DONE should be forwarded to its destination")
                 if (i%num_valid_ds_elements == 0): # This is were an additional update message should be sent to spine
-                    logger.info("***** fManually verify: a QUEUE_SIGNAL should be sent to linked spine *****") 
+                    logger.info("***** a QUEUE_SIGNAL should be sent to linked spine *****") 
                 for i in range(2):
                     poll_res = testutils.dp_poll(self)
                     (rcv_device, rcv_port, rcv_pkt, pkt_time) = poll_res

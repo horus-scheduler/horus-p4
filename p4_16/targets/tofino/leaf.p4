@@ -106,7 +106,6 @@ control LeafIngress(
                     }
                 };
 
-
             Register<queue_len_t, _>(MAX_WORKERS_IN_RACK) queue_len_list_2; // List of queue lens for all vclusters
                 RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_2) update_queue_len_list_2 = {
                     void apply(inout queue_len_t value, out queue_len_t rv) {
@@ -488,7 +487,7 @@ control LeafIngress(
                         */
                         @stage(2) {
                             falcon_md.mirror_dst_id = hdr.falcon.dst_id; // We want the original packet to reach its destination
-                            
+                            falcon_md.received_dst_id = hdr.falcon.dst_id;
                             if (hdr.falcon.pkt_type == PKT_TYPE_NEW_TASK){
                                 get_curr_idle_index(); // decrement the index so we read the correct idle worker id
                                 adjust_random_range_ds.apply(); // move the random indexes to be in range of num workers in rack
@@ -564,7 +563,9 @@ control LeafIngress(
                                     get_larger_queue_len();
                                 } else if (falcon_md.cluster_idle_count == 1) {
                                     hdr.falcon.dst_id = falcon_md.removed_idle_link; // Send idle remove packet to the linked spine
+                                    hdr.falcon.src_id = falcon_md.received_dst_id;
                                     hdr.falcon.pkt_type = PKT_TYPE_IDLE_REMOVE;
+                                    
                                     falcon_md.mirror_dst_id = falcon_md.idle_ds_id;  // Mirror the original packet to idle worker
                                     ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE;
                                 }

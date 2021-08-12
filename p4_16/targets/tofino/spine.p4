@@ -253,7 +253,7 @@ control SpineIngress(
     action act_get_cluster_num_valid_leafs(bit<16> num_leafs) {
         falcon_md.cluster_num_valid_ds = num_leafs;
     }
-    table get_cluster_num_valid_leafs {
+    table get_cluster_num_valid_leafs { // TODO: fix typo: Leaves !
         key = {
             hdr.falcon.cluster_id : exact;
         }
@@ -312,28 +312,12 @@ control SpineIngress(
         default_action = NoAction;
     }
 
-    action act_get_leaf_dst_id(bit <16> leaf_dst_id){
-        hdr.falcon.dst_id = leaf_dst_id;
-    }
-    table get_leaf_dst_id {
-        key = {
-            falcon_md.random_ds_index_1: exact;
-            hdr.falcon.cluster_id: exact;
-        }
-        actions = {
-            act_get_leaf_dst_id();
-            NoAction;
-        }
-        size = 16;
-        default_action = NoAction;
-    }
-
     action act_get_rand_leaf_id_2 (bit <16> leaf_id){
         falcon_md.random_id_2 = leaf_id;
     }
     table get_rand_leaf_id_2 {
         key = {
-            falcon_md.random_ds_index_1: exact;
+            falcon_md.random_ds_index_2: exact;
             hdr.falcon.cluster_id: exact;
         }
         actions = {
@@ -349,6 +333,7 @@ control SpineIngress(
     table get_rand_leaf_id_1 {
         key = {
             falcon_md.random_ds_index_1: exact;
+            hdr.falcon.cluster_id: exact;
         }
         actions = {
             act_get_rand_leaf_id_1();
@@ -370,7 +355,9 @@ control SpineIngress(
              * get_leaf_start_idx
              * gen_random_leaf_index_16
             */
+        // ig_intr_tm_md.ucast_egress_port = 28;
         if (hdr.falcon.dst_id == SWITCH_ID) { // If this packet is destined for this spine do falcon processing ot. its just an intransit packet we need to forward on correct port
+            
             @stage(0) {
                 get_leaf_start_idx ();
                 get_cluster_num_valid_leafs.apply();
