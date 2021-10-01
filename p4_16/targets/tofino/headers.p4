@@ -26,8 +26,8 @@
 #define HDR_SRC_ID_SIZE 16
 #define HDR_QUEUE_LEN_SIZE 16
 #define HDR_SEQ_NUM_SIZE 16
-#define HDR_FALCON_RAND_GROUP_SIZE 8
-#define HDR_FALCON_DST_SIZE 8
+#define HDR_saqr_RAND_GROUP_SIZE 8
+#define HDR_saqr_DST_SIZE 8
 
 #define QUEUE_LEN_FIXED_POINT_SIZE 16
 
@@ -66,7 +66,7 @@ typedef bit<QUEUE_LEN_FIXED_POINT_SIZE> len_fixed_point_t;
 header empty_t {
 }
 
-header falcon_h {
+header saqr_h {
     bit<HDR_PKT_TYPE_SIZE> pkt_type;
     bit<HDR_CLUSTER_ID_SIZE> cluster_id;
     bit<16> src_id;                 // workerID for ToRs. ToRID for spines.
@@ -75,11 +75,11 @@ header falcon_h {
     bit<HDR_SEQ_NUM_SIZE> seq_num;   
 }
 
-struct falcon_header_t {
+struct saqr_header_t {
     ethernet_h ethernet;
     ipv4_h ipv4;
     udp_h udp;
-    falcon_h falcon;
+    saqr_h saqr;
 }
 
 
@@ -92,7 +92,7 @@ header task_resub_hdr_t {
 }
 
 
-struct falcon_metadata_t {
+struct saqr_metadata_t {
     bit<1> idle_remove_lock;
     bit<HDR_SRC_ID_SIZE> linked_sq_id;
     bit<HDR_SRC_ID_SIZE> linked_iq_id;
