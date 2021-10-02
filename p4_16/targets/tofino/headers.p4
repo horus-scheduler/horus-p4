@@ -91,6 +91,10 @@ header task_resub_hdr_t {
     bit<HDR_QUEUE_LEN_SIZE> qlen_2;
 }
 
+// Empty metadata struct for empty egress blocks
+struct eg_metadata_t {
+
+}
 
 struct saqr_metadata_t {
     bit<1> idle_remove_lock;
