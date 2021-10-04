@@ -185,22 +185,6 @@ control SpineIngress(
                 }
             }
         };
-    Register<bit<16>, _>(MAX_VCLUSTERS) last_idle_new_index; // 
-        RegisterAction<bit<16>, _, bit<16>>(last_idle_new_index) read_last_idle_new_index  = {
-            void apply(inout bit<16> value, out bit<16> rv) {
-                rv = value;
-            }
-        };
-        RegisterAction<bit<16>, _, bit<16>>(last_idle_new_index) write_last_idle_new_index  = {
-            void apply(inout bit<16> value, out bit<16> rv) {
-                value = saqr_md.task_resub_hdr.ds_index_1;
-            }
-        };
-        RegisterAction<bit<16>, _, bit<16>>(last_idle_new_index) reset_last_idle_new_index  = {
-            void apply(inout bit<16> value, out bit<16> rv) {
-                rv = saqr_md.idle_ds_index;
-            }
-        };
 
     // TESTBEDONLY: This register is for collecting statistics for overheads in our experiments 
     // Should be removed when measuring resource usage.

@@ -381,8 +381,8 @@ class SpineController():
         self.register_deferred_list_1 = bfrt_info.table_get("SpineIngress.deferred_queue_len_list_1")
         self.register_deferred_list_2 = bfrt_info.table_get("SpineIngress.deferred_queue_len_list_2")
         self.register_idle_list_idx_mapping = bfrt_info.table_get("SpineIngress.idle_list_idx_mapping")
-        self.register_last_idle_new_index = bfrt_info.table_get("SpineIngress.last_idle_new_index")
         self.register_stat_count_resub = bfrt_info.table_get("SpineIngress.stat_count_resub")
+        
         # # MA Tables
         self.forward_saqr_switch_dst = bfrt_info.table_get("SpineIngress.forward_saqr_switch_dst")
         self.forward_saqr_switch_dst.info.key_field_annotation_add("hdr.saqr.dst_id", "id")
@@ -445,11 +445,6 @@ class SpineController():
             self.pipe_id,
             self.TEST_VCLUSTER_ID)
         
-        register_write(self.target,
-            self.register_last_idle_new_index,
-            register_name='SpineIngress.last_idle_new_index.f1',
-            index=self.TEST_VCLUSTER_ID,
-            register_value=self.initial_idle_count-1)
         
         for i, qlen in enumerate(self.intitial_qlen_state):
             register_write(self.target,
