@@ -1,3 +1,4 @@
+
 # saqr-p4
 This repo contains the P4 switch implementation for **Saqr: Distributed In-network Task Scheduler for Datacenters**.
 
@@ -6,17 +7,19 @@ This repo contains the P4 switch implementation for **Saqr: Distributed In-netwo
 p4_16/targets/[tofino](https://github.com/parhamyassini/saqr-p4/tree/master/p4_16/targets/tofino) Contains the P4-16 programs written for TNA architecture. 
 There are three main programs in this repository. The headers and parsers are common between these programs. Each program contains leaf and spine logic and runs each on one of the hardware pipelines and a controller which configures the tables.  
 1. Saqr
-Under the directory "saqr". Contains the Saqr implementation for TNA architecture. 
+Under the directory "saqr". Contains the Saqr implementation for TNA architecture. It also contains some legacy codes and python testcases. 
+>Note that the python testcases in saqr directory where initially used to confirm the expected behaviour; but we have modified the code ever since (as we ran experiments on the hardware switch). Therefore, the testcases might need some modificaions.
  
-2. RS-R
- Contains the implementation of [RackSched](https://github.com/netx-repo/RackSched) in P4-16 for leaf switches. We only added the necessary codes to support multiple virtual clusters and support large number of nodes. The code uses virtual cluster feature to emulate multiple leaf switches in our testbed topology (as explained in next section). 
+2. **R**acksched-**R**andom **(RS-R)**
+ Contains the implementation of [RackSched](https://github.com/netx-repo/RackSched) in P4-16 for leaf switches. We only added the necessary codes to support multiple virtual clusters and support large number of nodes (instead of 8 workers in the original implementation). We also use virtual cluster feature to emulate multiple leaf switches in our testbed topology (similar to what we did for Saqr, as explained in next section). 
 The spine switch randomly selects one of the racks for a task.
 
-3. RS-H 
- Similar to RS-R but we have extended the solution to support multiple racks using by replicating the RackSched logic at both spine and leaf layers. In leaf program, we add support for sending state updates from leaf to spine. In this setup, each leaf scheduler keeps track of average load in rack and sends this value to the spine after receiving a reply from a worker in the rack.
+3. **R**acksched-**H**ierarchical **(RS-H)**
+ Similar to RS-R but we have extended the solution to support multiple racks by replicating the RackSched logic at both spine and leaf layers:
+In leaf program, we add support for sending state updates from leaf to spine. In this setup, each leaf scheduler keeps track of average load in rack and sends this value to the spine after receiving a reply from a worker in the rack.
 The spine implements the Racksched policy and similar to leaf switches, uses power-of-two choices to select a rack for a task. 
 
-## Experiment Setup
+## Experiment Setup and Configurations
 ### Network topology and switch connections
 The figure below shows the high-level design of the testbed setup used in our experiments: 
 We use two machines as clients and four *or* five machines as workers (depending on Skewed or Balanced placement experiments).
@@ -27,15 +30,18 @@ The figure below shows the exact connections between switch ports and machines i
 
 ![Switch Setup](./figs/switch_connection_setup.png)
 
-### Emulating multiple leafs using P4 Program
+### Emulating multiple leaves in P4 Program
 The current implementation uses the Virtual Cluster (VC) feature to emulate different leafs. The spine program assigns the ```hdr.falcon.cluster_id``` based on the selected leaf (this is done when selecting output port). Therfore, each leaf will only have access to the workers in that cluster. 
  The leaf programs first checks the ```hdr.falcon.cluster_id```, and based on that each leaf has access to an isolated part of the register arrays. In Saqr, each VC has the following registers:   linkage register, Load list register arrays (including the load and drift arrays), idle counter register (used as pointer to the idle list) and idle list register array. 
 The controller is responsible for managing this virtualization as it configures the intial setup for the placement of workers. The current controller codes provide two setup configs used in our experiments: Skewed and Uniform.
 The physical connections between machines and switch do not need to be changed for the two mentioned setps.
-XXX Describe how controller changes setup and how worker configs should change (refer to the app-evals repo).
+> Important note: The parts of the codes that are only used for *our testbed experiments* are marked in comments with tag: "TESTBEDONLY". These lines do not need to be there if we are not going to emulate multiple leaves. The instructions are given in comments for what should be changed the case that each leaf runs on an actuall switch.
 
-### Instructions for making new placement setups
-XXX
+### Instructions for changing placement setups
+There are some important configs that should be done both in controller and in the [worker machines](https://github.com/parhamyassini/saqr-app-eval) (shinjuku configs) to change the setups.
+We summerize these in here:
+
+XXX Ask Hashmi to provide a summary of what needs to be changed in controller and shinjuku configs for a new worker placement setup. 
 
 ## Building and Running the Codes
 
@@ -111,8 +117,12 @@ python rs_h_controller.py <placement-setup-arg>
 The "\<placement-setup-arg\>" can be either "b" (balanced) or "s" (skewed) for the two setups in our experiments.
 
 ### Run the Workers and Clients
-Documentation on setting up workers and clients are provided in [this repo](https://github.com/parhamyassini/saqr-app-eval). XXX 
+Documentation on setting up workers and clients are provided in [this repo](https://github.com/parhamyassini/saqr-app-eval).
 
+### Collecting overhead results
+For RackSched-Hierarchical (RS-H), for each reply packet from worker, leaf sends an update message to spine. Also, there are no resubmissions.
+
+For Saqr, the controller prints out the leaf resubmissions in total we use that to calculate the the percentage of tasks resubmitted. It also, prints out the the total number of state update messages (load and idle linkage msgs). In addition, we report the total number of resubmissions at spine switch which includes idle remove procedure (used for calculating total processing overheads).
 
 ## Known issues
  XXX
