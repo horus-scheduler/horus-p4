@@ -18,8 +18,13 @@
 #define PKT_TYPE_PROBE_IDLE_QUEUE 8
 #define PKT_TYPE_PROBE_IDLE_RESPONSE 9
 #define PKT_TYPE_IDLE_REMOVE 10
-#define PKT_TYPE_REMOVE_ACK 11
-#define PKT_TYPE_QUEUE_SIGNAL_INIT 12
+#define PKT_TYPE_KEEP_ALIVE 11
+#define PKT_TYPE_WORKER_ID 12
+#define PKT_TYPE_WORKER_ID_ACK 13
+#define PKT_TYPE_REMOVE_ACK 14
+#define PKT_TYPE_QUEUE_SIGNAL_INIT 15
+
+#define PORT_PCI_CPU 192
 
 #define HDR_PKT_TYPE_SIZE 8
 #define HDR_CLUSTER_ID_SIZE 16
@@ -91,9 +96,11 @@ header task_resub_hdr_t {
     bit<HDR_QUEUE_LEN_SIZE> qlen_2;
 }
 
+
 // Empty metadata struct for empty egress blocks
 struct eg_metadata_t {
-
+    bit<32> egress_tstamp_clipped;
+    bit<32> task_counter;
 }
 
 struct saqr_metadata_t {
@@ -103,6 +110,8 @@ struct saqr_metadata_t {
     bit<QUEUE_LEN_FIXED_POINT_SIZE> queue_len_unit; // (1/num_worekrs) for each vcluster
     bit<QUEUE_LEN_FIXED_POINT_SIZE> queue_len_unit_sample_1; // (1/num_worekrs) for each vcluster
     bit<QUEUE_LEN_FIXED_POINT_SIZE> queue_len_unit_sample_2; // (1/num_worekrs) for each vcluster
+    bit<32> task_counter;
+    bit<32> ingress_tstamp_clipped;
     bit<16> cluster_idle_count;
     bit<16> idle_ds_index;
     bit<16> worker_index;

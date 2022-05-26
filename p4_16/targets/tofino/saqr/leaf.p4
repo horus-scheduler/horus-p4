@@ -315,6 +315,21 @@ control LeafIngress(
                         value = value + 1;
                     }
             };
+
+            Register<bit<32>, _>(1) stat_count_task; 
+            RegisterAction<bit<32>, _, bit<32>>(stat_count_task) inc_stat_count_task  = {
+                void apply(inout bit<32> value, out bit<32> rv) {
+                    rv = value;
+                    value = value + 1;
+                }
+            };
+
+            Register<bit<32>, _>(65536) ingress_tstamp; 
+            RegisterAction<bit<32>, _, bit<32>>(ingress_tstamp) write_ingress_tstamp  = {
+                void apply(inout bit<32> value, out bit<32> rv) {
+                    value = saqr_md.ingress_tstamp_clipped;
+                }
+            };
             
             /* 
              * Random number generator: 
@@ -520,6 +535,12 @@ control LeafIngress(
                 size = 16;
                 default_action = NoAction;
             }
+
+            action send_pkt_to_cpu() {
+                hdr.saqr.dst_id = PORT_PCI_CPU;
+                ig_intr_tm_md.ucast_egress_port = PORT_PCI_CPU;
+            }
+
             /* Add the random generated index with the base index of cluster */ 
             action offset_random_ids() {
                 saqr_md.random_id_1 = saqr_md.random_id_1 + saqr_md.cluster_ds_start_idx;
@@ -588,6 +609,8 @@ control LeafIngress(
                             saqr_md.cluster_idle_count = read_and_dec_idle_count.execute(hdr.saqr.cluster_id); // Read last idle count for vcluster
                         } else if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE) { // worker reply but still not idle, we just read the pointer (we use this later to send updates about idle linkage)
                             saqr_md.cluster_idle_count = read_idle_count.execute(hdr.saqr.cluster_id);
+                        } else if (hdr.saqr.pkt_type == PKT_TYPE_KEEP_ALIVE || hdr.saqr.pkt_type == PKT_TYPE_WORKER_ID_ACK) {
+                            send_pkt_to_cpu();
                         }
 
                         // Lines below are not used in current experiments. 
@@ -608,12 +631,14 @@ control LeafIngress(
                             if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE || hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
                                 saqr_md.aggregate_queue_len = update_read_aggregate_queue_len.execute(hdr.saqr.cluster_id);
                             } 
+                            saqr_md.ingress_tstamp_clipped = (bit<32>)ig_intr_md.ingress_mac_tstamp[31:0];
                         }
                         
                         @stage(2) {
                             saqr_md.mirror_dst_id = hdr.saqr.dst_id; // We want the original pkt to reach its destination (done later by mirroring the orignial pkt)
                             saqr_md.received_dst_id = hdr.saqr.dst_id; //  Keep received dst_id so that we can swap src_id dst_id to reply to other switches
                             if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK){
+                                saqr_md.task_counter = inc_stat_count_task.execute(0);
                                 get_curr_idle_index(); // decrement the pointer so we read the correct idle worker id
                                 adjust_random_range_ds.apply(); // shift the random indexes to be in range of num workers in rack
                             } else {
@@ -629,6 +654,7 @@ control LeafIngress(
                                 }
                                 
                             } else if(hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
+                                write_ingress_tstamp.execute(hdr.saqr.seq_num);
                                 if (saqr_md.cluster_idle_count > 0) { // If a new task arrives and idle workers available read idle_list to get ID of idle worker
                                     saqr_md.idle_ds_id = read_idle_list.execute(saqr_md.idle_ds_index); 
                                 } else {
@@ -852,6 +878,10 @@ parser SaqrEgressParser(
         out egress_intrinsic_metadata_t eg_intr_md) {
     state start {
         pkt.extract(eg_intr_md);
+        pkt.extract(hdr.ethernet);
+        pkt.extract(hdr.ipv4);
+        pkt.extract(hdr.udp);
+        pkt.extract(hdr.saqr);
         transition accept;
     }
 }
@@ -861,7 +891,12 @@ control SaqrEgressDeparser(
         inout saqr_header_t hdr,
         in eg_metadata_t eg_md,
         in egress_intrinsic_metadata_for_deparser_t ig_intr_dprs_md) {
-    apply {}
+    apply {
+        pkt.emit(hdr.ethernet);
+        pkt.emit(hdr.ipv4);
+        pkt.emit(hdr.udp);
+        pkt.emit(hdr.saqr);
+    }
 }
 
 control SaqrEgress(
@@ -871,5 +906,25 @@ control SaqrEgress(
         in egress_intrinsic_metadata_from_parser_t eg_intr_md_from_prsr,
         inout egress_intrinsic_metadata_for_deparser_t ig_intr_dprs_md,
         inout egress_intrinsic_metadata_for_output_port_t eg_intr_oport_md) {
-    apply {}
+    Register<bit<32>, _>(1) stat_count_task; 
+    RegisterAction<bit<32>, _, bit<32>>(stat_count_task) inc_stat_count_task  = {
+        void apply(inout bit<32> value, out bit<32> rv) {
+            rv = value;
+            value = value + 1;
+        }
+    };
+    Register<bit<32>, _>(65536) egress_tstamp; 
+        RegisterAction<bit<32>, _, bit<32>>(egress_tstamp) write_egress_tstamp  = {
+            void apply(inout bit<32> value, out bit<32> rv) {
+                value = eg_md.egress_tstamp_clipped;
+            }
+    };
+
+    apply {
+        if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
+            eg_md.task_counter = inc_stat_count_task.execute(0);
+            eg_md.egress_tstamp_clipped = (bit<32>)eg_intr_md_from_prsr.global_tstamp[31:0];
+            write_egress_tstamp.execute(hdr.saqr.seq_num);
+        }
+    }
 }

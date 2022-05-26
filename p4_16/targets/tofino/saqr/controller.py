@@ -10,9 +10,9 @@ import bfrt_grpc.client as client
 import random
 import collections
 import math
+import numpy as np
 
 DEBUG_DUMP_REGS = False
-
 
 TEST_VCLUSTER_ID = 0
 MAX_VCLUSTER_WORKERS = 32
@@ -27,7 +27,7 @@ def register_write(target, register_object, register_name, index, register_value
             [register_object.make_key([client.KeyTuple('$REGISTER_INDEX', index)])],
             [register_object.make_data([client.DataTuple(register_name, register_value)])])
 
-def test_register_read(target, register_object, register_name, pipe_id, index):    
+def test_register_read(target, register_object, register_name, pipe_id, index, print_reg=True):    
     resp = register_object.entry_get(
             target,
             [register_object.make_key([client.KeyTuple('$REGISTER_INDEX', index)])],
@@ -35,7 +35,8 @@ def test_register_read(target, register_object, register_name, pipe_id, index):
     
     data_dict = next(resp)[0].to_dict()
     res = data_dict[register_name][0]
-    print("Reading Register: %s [%d] = %d" %(str(register_name), index, res))
+    if print_reg:
+        print("Reading Register: %s [%d] = %d" %(str(register_name), index, res))
     return res
 
 class LeafController():
@@ -62,6 +63,9 @@ class LeafController():
         self.register_stat_count_resub = bfrt_info.table_get("LeafIngress.stat_count_resub")
         self.register_stat_count_idle_signal = bfrt_info.table_get("LeafIngress.stat_count_idle_signal")
         self.register_stat_count_load_signal = bfrt_info.table_get("LeafIngress.stat_count_load_signal")
+        self.register_stat_count_task = bfrt_info.table_get("LeafIngress.stat_count_task")
+        self.register_ingress_tstamp = bfrt_info.table_get("LeafIngress.ingress_tstamp")
+        self.register_egress_tstamp = bfrt_info.table_get("SaqrEgress.egress_tstamp")
 
         # MA Tables
         self.forward_saqr_switch_dst = bfrt_info.table_get("LeafIngress.forward_saqr_switch_dst")
@@ -102,11 +106,12 @@ class LeafController():
             self.initial_idle_list = [[0, 1, 2, 3, 4, 5, 6, 7],[0, 1, 2, 3, 4, 5, 6, 7], [0, 1, 2, 3, 4, 5, 6, 7], [0, 1, 2, 3, 4, 5, 6, 7]]
             self.wid_port_mapping = [
                         {0:132, 1:132, 2:132, 3:132, 4:132, 5:132, 6:132, 7:132},
-                        {0:134, 1:134, 2:134, 3:134, 4:134, 5:134, 6:134, 7:134},
+                        {0:150, 1:150, 2:150, 3:150, 4:150, 5:150, 6:150, 7:150},
                         {0:140, 1:140, 2:140, 3:140, 4:140, 5:140, 6:140, 7:140},
                         {0:142, 1:142, 2:142, 3:142, 4:142, 5:142, 6:142, 7:142},
                         ]
 
+        self.CPU_PORT_ID = 192
         self.initial_idle_count = []
         for rack_idle_list in self.initial_idle_list:
             self.initial_idle_count.append(len(rack_idle_list))
@@ -139,7 +144,7 @@ class LeafController():
 
         self.spine_port_mapping = {100: 152, 110:144, 111:160} 
         self.port_mac_mapping = {132: 'F8:F2:1E:3A:13:EC', 134: 'F8:F2:1E:3A:13:0C',  140: 'F8:F2:1E:3A:13:C4', 142:'F8:F2:1E:3A:07:24', 150:' F8:F2:1E:13:CA:FC',
-                    152: '40:A6:B7:3C:45:64', 160:'40:A6:B7:3C:24:C8', 144: 'F8:F2:1E:3A:13:C4'}
+                    152: '40:A6:B7:3C:45:64', 160:'40:A6:B7:3C:24:C8', 144: 'F8:F2:1E:3A:13:C4', self.CPU_PORT_ID: '00:02:00:00:03:00'}
         
         self.num_valid_us_elements = 2
         self.workers_start_idx = []
@@ -238,6 +243,13 @@ class LeafController():
                     [self.set_queue_len_unit.make_data([client.DataTuple('cluster_unit', self.qlen_unit[leaf_id])],
                                                  'LeafIngress.act_set_queue_len_unit')]
                 )
+
+        self.forward_saqr_switch_dst.entry_add(
+                self.target,
+                [self.forward_saqr_switch_dst.make_key([client.KeyTuple('hdr.saqr.dst_id', self.CPU_PORT_ID)])],
+                [self.forward_saqr_switch_dst.make_data([client.DataTuple('port', self.CPU_PORT_ID), client.DataTuple('dst_mac', client.mac_to_bytes(self.port_mac_mapping[self.CPU_PORT_ID]))],
+                                             'LeafIngress.act_forward_saqr')]
+            )
 
         for sid in self.spine_port_mapping.keys():
             self.forward_saqr_switch_dst.entry_add(
@@ -358,11 +370,38 @@ class LeafController():
                 'LeafIngress.stat_count_idle_signal.f1',
                 self.pipe_id,
                 i)
+        
+        task_tot = test_register_read(self.target,
+            self.register_stat_count_task,
+            'LeafIngress.stat_count_task.f1',
+            self.pipe_id,
+            0)
+        print ("Total tasks arrived at Leaf: %d" %(task_tot))
+        delay_list = []
+        if task_tot >= 10000:
+            for i in range(10000):
+                ingress_tstamp = test_register_read(self.target,
+                self.register_ingress_tstamp,
+                'LeafIngress.ingress_tstamp.f1',
+                self.pipe_id,
+                i, 
+                print_reg=False)
+                egress_tstamp = test_register_read(self.target,
+                self.register_egress_tstamp,
+                'SaqrEgress.egress_tstamp.f1',
+                self.pipe_id,
+                i,
+                print_reg=False)
+                delay_list.append(egress_tstamp - ingress_tstamp)
+            print (delay_list)
+            np.savetxt('leaf_latency.csv', [np.array(delay_list)], delimiter=', ', fmt='%d')
+
         print ("Leaf Total Resubmission: %d" %(total_resub_leaf))
         print ("Total Msgs for Load Signals: %d" %(total_msg_load))
         print ("Total Msgs for Idle Signals: %d" %(total_msg_idle))
         print ("Sum Total State Update Msgs: %d" %(total_msg_load+total_msg_idle))
-
+        if task_tot >= 10000:
+            exit(0)
 class SpineController():
     def __init__(self, target, bfrt_info, setup):
         self.target = target
@@ -382,6 +421,9 @@ class SpineController():
         self.register_deferred_list_2 = bfrt_info.table_get("SpineIngress.deferred_queue_len_list_2")
         self.register_idle_list_idx_mapping = bfrt_info.table_get("SpineIngress.idle_list_idx_mapping")
         self.register_stat_count_resub = bfrt_info.table_get("SpineIngress.stat_count_resub")
+        self.register_stat_count_task = bfrt_info.table_get("SpineIngress.stat_count_task")
+        self.register_ingress_tstamp = bfrt_info.table_get("SpineIngress.ingress_tstamp")
+        self.register_egress_tstamp = bfrt_info.table_get("SpineEgress.egress_tstamp")
         
         # # MA Tables
         self.forward_saqr_switch_dst = bfrt_info.table_get("SpineIngress.forward_saqr_switch_dst")
@@ -564,6 +606,32 @@ class SpineController():
             self.pipe_id,
             TEST_VCLUSTER_ID)
         print ("Total resubmissions at Spine (Task resub + Idle remove resub): %d" %(resub_tot))
+
+        task_tot = test_register_read(self.target,
+            self.register_stat_count_task,
+            'SpineIngress.stat_count_task.f1',
+            self.pipe_id,
+            0)
+        print ("Total tasks arrived at Spine: %d" %(task_tot))
+        delay_list = []
+        if (task_tot >= 10000):
+            for i in range(10000):
+                ingress_tstamp = test_register_read(self.target,
+                self.register_ingress_tstamp,
+                'SpineIngress.ingress_tstamp.f1',
+                self.pipe_id,
+                i, 
+                print_reg=False)
+                egress_tstamp = test_register_read(self.target,
+                self.register_egress_tstamp,
+                'SpineEgress.egress_tstamp.f1',
+                self.pipe_id,
+                i,
+                print_reg=False)
+                delay_list.append(egress_tstamp - ingress_tstamp)
+            print (delay_list)
+            np.savetxt('spine_latency.csv', [np.array(delay_list)], delimiter=', ', fmt='%d')
+
         # for i in range(2):
         #     test_register_read(self.target,
         #         self.register_queue_len_list_1,

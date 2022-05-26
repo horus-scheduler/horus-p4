@@ -194,7 +194,22 @@ control SpineIngress(
                 value = value + 1;
             }
     };
+ 
 
+    Register<bit<32>, _>(1) stat_count_task; 
+        RegisterAction<bit<32>, _, bit<32>>(stat_count_task) inc_stat_count_task  = {
+            void apply(inout bit<32> value, out bit<32> rv) {
+                rv = value;
+                value = value + 1;
+            }
+    };
+     
+    Register<bit<32>, _>(65536) ingress_tstamp; 
+        RegisterAction<bit<32>, _, bit<32>>(ingress_tstamp) write_ingress_tstamp  = {
+            void apply(inout bit<32> value, out bit<32> rv) {
+                value = saqr_md.ingress_tstamp_clipped;
+            }
+    };
     /********  Action/table decelarations *********/
     action _drop() {
         ig_intr_dprsr_md.drop_ctl = 0x1; // Drop packet.
@@ -415,6 +430,7 @@ control SpineIngress(
             @stage(2) {
                 if (ig_intr_md.resubmit_flag!=0) {
                     if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK){
+
                         if (saqr_md.min_correct_qlen == saqr_md.task_resub_hdr.qlen_1) {
                             hdr.saqr.dst_id = saqr_md.task_resub_hdr.ds_index_1;
                             saqr_md.selected_ds_qlen = saqr_md.task_resub_hdr.qlen_1;
@@ -426,9 +442,11 @@ control SpineIngress(
                 } else {
                     if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK){
                         saqr_md.idle_rr_index = inc_idle_rr_counter.execute(hdr.saqr.cluster_id);
+                        saqr_md.task_counter = inc_stat_count_task.execute(0);
                     }
                 }
                 get_array_indices();
+                saqr_md.ingress_tstamp_clipped = (bit<32>)ig_intr_md.ingress_mac_tstamp[31:0];
             }
 
             @stage(3) {
@@ -438,7 +456,6 @@ control SpineIngress(
                     }
                 } else {
                     adjust_random_range_sq_leafs.apply(); //  We want to select a random node from available qlen signals 
-
                     if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
                         select_idle_index(); // 
                     }  else if (hdr.saqr.pkt_type == PKT_TYPE_IDLE_SIGNAL) {
@@ -493,7 +510,6 @@ control SpineIngress(
                 } else if (hdr.saqr.pkt_type == PKT_TYPE_IDLE_REMOVE) { 
                     saqr_md.task_resub_hdr.ds_index_2 = saqr_md.idle_ds_id; // put last idle node in resub header so we write it on the pos of deleted idle node in resub path
                 } 
-                
             }
 
             @stage(6) {
@@ -523,6 +539,9 @@ control SpineIngress(
             @stage(7) {
                 compare_queue_len();
                 get_larger_queue_len();
+                if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK && ig_intr_md.resubmit_flag == 0) {
+                    write_ingress_tstamp.execute(hdr.saqr.seq_num);
+                }
             }
 
             @stage(8) {
@@ -618,6 +637,7 @@ control SpineIngressDeparser(
         if (ig_intr_dprsr_md.resubmit_type == RESUBMIT_TYPE_NEW_TASK) {
             resubmit.emit(saqr_md.task_resub_hdr);
         } 
+
         pkt.emit(hdr.ethernet);
         pkt.emit(hdr.ipv4);
         pkt.emit(hdr.udp);
@@ -633,6 +653,10 @@ parser SpineEgressParser(
         out egress_intrinsic_metadata_t eg_intr_md) {
     state start {
         pkt.extract(eg_intr_md);
+        pkt.extract(hdr.ethernet);
+        pkt.extract(hdr.ipv4);
+        pkt.extract(hdr.udp);
+        pkt.extract(hdr.saqr);
         transition accept;
     }
 }
@@ -642,7 +666,12 @@ control SpineEgressDeparser(
         inout saqr_header_t hdr,
         in eg_metadata_t eg_md,
         in egress_intrinsic_metadata_for_deparser_t ig_intr_dprs_md) {
-    apply {}
+    apply {
+        pkt.emit(hdr.ethernet);
+        pkt.emit(hdr.ipv4);
+        pkt.emit(hdr.udp);
+        pkt.emit(hdr.saqr);
+    }
 }
 
 control SpineEgress(
@@ -652,5 +681,24 @@ control SpineEgress(
         in egress_intrinsic_metadata_from_parser_t eg_intr_md_from_prsr,
         inout egress_intrinsic_metadata_for_deparser_t ig_intr_dprs_md,
         inout egress_intrinsic_metadata_for_output_port_t eg_intr_oport_md) {
-    apply {}
+    Register<bit<32>, _>(1) stat_count_task; 
+    RegisterAction<bit<32>, _, bit<32>>(stat_count_task) inc_stat_count_task  = {
+        void apply(inout bit<32> value, out bit<32> rv) {
+            rv = value;
+            value = value + 1;
+        }
+    };
+    Register<bit<32>, _>(65536) egress_tstamp; 
+        RegisterAction<bit<32>, _, bit<32>>(egress_tstamp) write_egress_tstamp  = {
+            void apply(inout bit<32> value, out bit<32> rv) {
+                value = eg_md.egress_tstamp_clipped;
+            }
+    };
+    apply {
+        if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
+            eg_md.task_counter = inc_stat_count_task.execute(0);
+            eg_md.egress_tstamp_clipped = (bit<32>)eg_intr_md_from_prsr.global_tstamp[31:0];
+            write_egress_tstamp.execute(hdr.saqr.seq_num);
+        }
+    }
 }
