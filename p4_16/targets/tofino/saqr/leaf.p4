@@ -1,9 +1,9 @@
 #include <core.p4>
 #include <tna.p4>
 
-#include "../common/headers.p4"
-#include "../common/util.p4"
-#include "../headers.p4"
+#include "./common/headers.p4"
+#include "./common/util.p4"
+#include "headers.p4"
 
 /* Implementation of Saqr Leaf 
  * Comments with the tag <TESTBEDONLY> mark the parts of the code that were modified for emulating multiple leaf schedulers using one switch.
@@ -93,92 +93,96 @@ control LeafIngress(
             /* queue_len_list_X: Holds the load (queue length) of each lower-layer node. 
              * We store two identical copies of this list so we can access the load values twice (for two samples)
             */
-            Register<queue_len_t, _>(MAX_WORKERS_IN_RACK) queue_len_list_1; // List of queue lens for all vclusters
-                RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_1) update_queue_len_list_1 = {
+            Register<queue_len_t, _>(MAX_WORKERS_IN_RACK) queue_len_list_low; // List of queue lens for all vclusters
+                RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_low) update_queue_len_list_low = {
                     void apply(inout queue_len_t value, out queue_len_t rv) {
-                        value = saqr_md.selected_ds_qlen;
-                        rv = value;
-                    }
-                };
-                RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_1) read_queue_len_list_1 = {
-                    void apply(inout queue_len_t value, out queue_len_t rv) {
-                        rv = value;
-                    }
-                };
-                 RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_1) write_queue_len_list_1 = {
-                    void apply(inout queue_len_t value, out queue_len_t rv) {
-                        value = hdr.saqr.qlen;
-                        rv = value;
-                    }
-                };
-            
-            Register<queue_len_t, _>(MAX_WORKERS_IN_RACK) queue_len_list_2; // List of queue lens for all vclusters
-                RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_2) update_queue_len_list_2 = {
-                    void apply(inout queue_len_t value, out queue_len_t rv) {
-                        value = saqr_md.selected_ds_qlen;
-                        rv = value;
-                    }
-                };
-                RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_2) read_queue_len_list_2 = {
-                    void apply(inout queue_len_t value, out queue_len_t rv) {
-                        rv = value;
-                    }
-                };
-                RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_2) write_queue_len_list_2 = {
-                    void apply(inout queue_len_t value, out queue_len_t rv) {
-                        value = hdr.saqr.qlen;
-                        rv = value;
-                    }
-                };
-            
-            /* 
-             * deferred_queue_len_list_X: Holds the difference between the value in queue_len_list_X and the actual 
-              load value (for each node).
-             * This is because actual load is increased as we make scheduling decisions and we can not write the 
-              incremented value to queue_len_list_X, so we keep them here and use these values for our 
-              selective resubmission algorithm.
-            */
-            Register<queue_len_t, _>(MAX_WORKERS_IN_RACK) deferred_queue_len_list_1; // List of queue lens for all vclusters
-                RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_1) check_deferred_queue_len_list_1 = {
-                    void apply(inout queue_len_t value, out queue_len_t rv) {
-                        if (value <= saqr_md.queue_len_diff) { // Queue len drift is not large enough to invalidate the decision
-                            value = value + 1;
-                            rv = 0;
+                        if (value > hdr.saqr.qlen) {
+                            rv = value;
+                            value = hdr.saqr.qlen;
                         } else {
-                            rv = value + saqr_md.selected_ds_qlen; // to avoid using another stage for this calculation
+                            rv = 0;
                         }
                     }
                 };
-                 RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_1) reset_deferred_queue_len_list_1 = {
-                    void apply(inout queue_len_t value, out queue_len_t rv) {
-                        value = 0;
-                        rv = value;
-                    }
-                };
-                RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_1) inc_deferred_queue_len_list_1 = {
-                    void apply(inout queue_len_t value, out queue_len_t rv) {
-                            value = value + 1;
-                    }
-                };
-
-            Register<queue_len_t, _>(MAX_WORKERS_IN_RACK) deferred_queue_len_list_2; // List of queue lens for all vclusters
-                RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_2) inc_deferred_queue_len_list_2 = {
+                RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_low) read_queue_len_list_low = {
                     void apply(inout queue_len_t value, out queue_len_t rv) {
                         value = value + 1;
                         rv = value;
                     }
                 };
-                RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_2) read_deferred_queue_len_list_2 = {
+                 RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_low) write_queue_len_list_low = {
                     void apply(inout queue_len_t value, out queue_len_t rv) {
-                        rv = value + saqr_md.not_selected_ds_qlen;
-                    }
-                };
-                 RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_2) reset_deferred_queue_len_list_2 = {
-                    void apply(inout queue_len_t value, out queue_len_t rv) {
-                        value = 0;
+                        value = saqr_md.not_selected_correct_qlen;
                         rv = value;
                     }
                 };
+            
+            Register<queue_len_t, _>(MAX_WORKERS_IN_RACK) queue_len_list_high; // List of queue lens for all vclusters
+                RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_high) update_queue_len_list_high = {
+                    void apply(inout queue_len_t value, out queue_len_t rv) {
+                        if (value > saqr_md.qlen_to_update) {
+                            rv = value;
+                            value = saqr_md.qlen_to_update;
+                        }
+                        rv = 0;
+                    }
+                };
+                RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_high) read_queue_len_list_high = {
+                    void apply(inout queue_len_t value, out queue_len_t rv) {
+                        if (value < saqr_md.low_ds_qlen) {
+                            value = value + 1;
+                            rv = 0;
+                        } else {
+                            rv = value;
+                        }
+                        
+                    }
+                };
+                // RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_high) write_queue_len_list_high = {
+                //    void apply(inout queue_len_t value, out queue_len_t rv) {
+                //        value = saqr_md.selected_correct_qlen;
+                //    }
+                //};
+            
+            Register<worker_id_t, _>(MAX_WORKERS_IN_RACK) worker_id_map_1;
+                RegisterAction<worker_id_t, _, worker_id_t>(worker_id_map_1) write_worker_id_map_1 = {
+                    void apply(inout worker_id_t value, out worker_id_t rv) {
+                        value = saqr_md.task_resub_hdr.ds_index_2;
+                        rv = value;
+                    }
+                };
+                RegisterAction<worker_id_t, _, worker_id_t>(worker_id_map_1) read_worker_id_map_1 = {
+                    void apply(inout worker_id_t value, out queue_len_t rv) {
+                        rv = value;
+                    }
+                };
+                RegisterAction<worker_id_t, _, worker_id_t>(worker_id_map_1) update_worker_id_map_1 = {
+                    void apply(inout worker_id_t value, out queue_len_t rv) {
+                        value = hdr.saqr.src_id;
+                        rv = value;
+                    }
+                };
+
+
+            Register<worker_id_t, _>(MAX_WORKERS_IN_RACK) worker_id_map_2;
+                RegisterAction<worker_id_t, _, worker_id_t>(worker_id_map_2) write_worker_id_map_2 = {
+                    void apply(inout worker_id_t value, out worker_id_t rv) {
+                        value = saqr_md.task_resub_hdr.ds_index_1;
+                        rv = value;
+                    }
+                };
+                RegisterAction<worker_id_t, _, worker_id_t>(worker_id_map_2) read_worker_id_map_2 = {
+                    void apply(inout worker_id_t value, out queue_len_t rv) {
+                        rv = value;
+                    }
+                };
+                RegisterAction<worker_id_t, _, worker_id_t>(worker_id_map_2) update_worker_id_map_2 = {
+                    void apply(inout worker_id_t value, out queue_len_t rv) {
+                        value = saqr_md.id_to_update;
+                    }
+                };
+            
+            
             /* 
              * aggregate_queue_len_list: Maintains the average queue length of workers in rack. 
               This is used for reporting to spine.
@@ -272,23 +276,6 @@ control LeafIngress(
                         } else {
                             rv = 1;
                             value = value + 1;
-                        }
-                    }
-                };
-
-            Register<bit<16>, _>(MAX_VCLUSTERS) idle_link_spine_view; 
-                RegisterAction<bit<16>, _, bit<16>>(idle_link_spine_view) write_idle_link_spine_view  = {
-                    void apply(inout bit<16> value, out bit<16> rv) {
-                        value = hdr.saqr.qlen;
-                    }
-                };
-                RegisterAction<bit<16>, _, bit<16>>(idle_link_spine_view) read_idle_link_spine_view  = {
-                    void apply(inout bit<16> value, out bit<16> rv) {
-                        rv = value;
-                        if (value == 1 && saqr_md.cluster_idle_count == 0){
-                            value = 0;
-                        } else {
-                            value = 1;
                         }
                     }
                 };
@@ -477,22 +464,6 @@ control LeafIngress(
                 saqr_md.random_id_2 = saqr_md.random_id_2 >> 15;
             }
 
-            table adjust_random_range_ds { // Reduce the random generated number (16 bit) based on number of workers in rack
-                key = {
-                    saqr_md.cluster_num_valid_ds: exact; 
-                }
-                actions = {
-                    adjust_random_worker_range_8(); // 256 Nodes == 8 bits
-                    adjust_random_worker_range_5();
-                    adjust_random_worker_range_4(); // 
-                    adjust_random_worker_range_3(); //
-                    adjust_random_worker_range_2(); // 
-                    adjust_random_worker_range_1(); // 
-                    NoAction; // == 16
-                }
-                size = 16;
-                default_action = NoAction;
-            }
             
             /* 
              Same logic as previous table, this time we use this for adjusting the random number within 
@@ -541,63 +512,31 @@ control LeafIngress(
                 ig_intr_tm_md.ucast_egress_port = PORT_PCI_CPU;
             }
 
-            /* Add the random generated index with the base index of cluster */ 
-            action offset_random_ids() {
-                saqr_md.random_id_1 = saqr_md.random_id_1 + saqr_md.cluster_ds_start_idx;
-                saqr_md.random_id_2 = saqr_md.random_id_2 + saqr_md.cluster_ds_start_idx;
-            }
-            
-            
-            action dec_repeated_rand() { // Used for breaking ties when two randomly generated numbers point to same index
-                saqr_md.random_id_2 = saqr_md.random_id_2-1;
-            }
-            action inc_repeated_rand() {
-                saqr_md.random_id_2 = saqr_md.random_id_2+1;
-            }
-
-            action compare_queue_len() { // Find min qlen between the sampled qlen values and put result in selected_ds_qlen
-                saqr_md.selected_ds_qlen = min(saqr_md.random_ds_qlen_1, saqr_md.random_ds_qlen_2);
-            }
-            
-            /* Used in resubmission path for scheduling: 
-             Compares the actual/correct qlen (including load and drift) for samples */
-            action compare_correct_queue_len() {
-                saqr_md.min_correct_qlen = min(saqr_md.task_resub_hdr.qlen_1, saqr_md.task_resub_hdr.qlen_2);
-            }
-            action get_larger_queue_len() {
-                saqr_md.not_selected_ds_qlen = max(saqr_md.random_ds_qlen_1, saqr_md.random_ds_qlen_2);
-            }
-            
-            action calculate_queue_len_diff(){
-                saqr_md.queue_len_diff = saqr_md.not_selected_ds_qlen - saqr_md.selected_ds_qlen;
-            }
             
             apply {
                 if (hdr.saqr.isValid()) {  // saqr packet
                     if (ig_intr_md.resubmit_flag != 0) { // Special case: packet is resubmitted just update the indexes
                         @stage(0){
-                            compare_correct_queue_len();
                             inc_stat_count_resub.execute(hdr.saqr.cluster_id);
                         }
                         @stage(1){
-                            if (saqr_md.min_correct_qlen == saqr_md.task_resub_hdr.qlen_1) {
-                                hdr.saqr.dst_id = saqr_md.task_resub_hdr.ds_index_1;
-                                saqr_md.selected_ds_qlen = saqr_md.task_resub_hdr.qlen_1 + 1;
-                            } else {
-                                hdr.saqr.dst_id = saqr_md.task_resub_hdr.ds_index_2;
-                                saqr_md.selected_ds_qlen = saqr_md.task_resub_hdr.qlen_2 + 1;
-                            }
+                            saqr_md.not_selected_correct_qlen = saqr_md.task_resub_hdr.qlen_1 - 1;
+                            
+                        }
+                        @stage(3) {
+                            write_queue_len_list_low.execute(hdr.saqr.cluster_id); // min qlen updated
+                        }
+                        @stage(4) {
+                            write_worker_id_map_1.execute(hdr.saqr.cluster_id);
+                            
                         }
                         @stage(5) {
-                            update_queue_len_list_1.execute(hdr.saqr.dst_id);
-                            update_queue_len_list_2.execute(hdr.saqr.dst_id);
+                            // write_queue_len_list_high.execute(hdr.saqr.cluster_id);  
                         }
-                        @stage(8) {
-                            reset_deferred_queue_len_list_1.execute(hdr.saqr.dst_id); // Just updated the queue_len_list so write 0 on deferred reg
+                        @stage(6) {
+                            write_worker_id_map_2.execute(hdr.saqr.cluster_id);
                         }
-                        @stage(9) {
-                            reset_deferred_queue_len_list_2.execute(hdr.saqr.dst_id);
-                        }
+                        hdr.saqr.dst_id = saqr_md.task_resub_hdr.ds_index_2; // was minimum
                     } else {
                         
                         get_worker_start_idx(); // Get start index (base address) for reg arrays for this vcluster
@@ -621,10 +560,9 @@ control LeafIngress(
                             saqr_md.linked_sq_id = read_update_linked_sq.execute(hdr.saqr.cluster_id); // Get ID of the Spine that the leaf reports to   
                         }
 
-                        
                         // Side note: Compiler bug, if we calculate the index for reg action here, compiler complains but if in action its okay!
 
-                        @stage(1){
+                        @stage(1) {
                             get_idle_index(); // Adds the base index to the pointer for idle list
                             get_cluster_num_valid.apply(); // Get number of workers in rack for this vcluster (used for adjusting random samples) 
                             gen_random_workers_16(); // Generate a 16 bit random number
@@ -640,7 +578,6 @@ control LeafIngress(
                             if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK){
                                 saqr_md.task_counter = inc_stat_count_task.execute(0);
                                 get_curr_idle_index(); // decrement the pointer so we read the correct idle worker id
-                                adjust_random_range_ds.apply(); // shift the random indexes to be in range of num workers in rack
                             } else {
                                 adjust_random_range_us.apply(); // shift the random indexes to be in range of num spine switches for vcluster
                             }
@@ -649,38 +586,24 @@ control LeafIngress(
                         @stage(3) {
                             if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE) { 
                                 get_spine_dst_id.apply(); // Convert the random spine index (vcluster-based) to a global spine switch ID
-                                if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE){ 
+                                if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE) { 
                                     add_to_idle_list.execute(saqr_md.idle_ds_index); // If worker reply and its idle, add it to idle list
-                                }
+                                } 
+                                saqr_md.qlen_high = update_queue_len_list_low.execute(hdr.saqr.cluster_id);
                                 
+
                             } else if(hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
                                 write_ingress_tstamp.execute(hdr.saqr.seq_num);
                                 if (saqr_md.cluster_idle_count > 0) { // If a new task arrives and idle workers available read idle_list to get ID of idle worker
                                     saqr_md.idle_ds_id = read_idle_list.execute(saqr_md.idle_ds_index); 
                                 } else {
-                                    if(saqr_md.random_id_1 == saqr_md.random_id_2) { 
-                                        if (saqr_md.random_id_2 == 0){ // Break ties in case two random numbers point to same index
-                                            inc_repeated_rand();
-                                        } else {
-                                            dec_repeated_rand();
-                                        }
-                                    }
+                                    saqr_md.low_ds_qlen = read_queue_len_list_low.execute(hdr.saqr.cluster_id); // min qlen
                                 }
                             }
                         }
                         
                         @stage(4) { 
-                            if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK && saqr_md.cluster_idle_count==0){
-                                offset_random_ids(); // sum up the random numbers with base index to access the load list indices belonging to this vcluster
-                            }
-                        }
-
-                        @stage(5) {
-                            if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
-                                // Read two qlen values from list
-                                saqr_md.random_ds_qlen_1 = read_queue_len_list_1.execute(saqr_md.random_id_1);
-                                saqr_md.random_ds_qlen_2 = read_queue_len_list_2.execute(saqr_md.random_id_2);
-                                
+                            if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK){
                                 /* Here we check whether the spine that send us this task, thinks we are idle or not!
                                  * This is useful to detect if an idle add or idle remove procedure was not succesfull.
                                  * leaf updates the linkage reg based on the view of spine so that later it re-sends idle add or idle remove
@@ -692,9 +615,10 @@ control LeafIngress(
                                 } else if (hdr.saqr.qlen == 0 && saqr_md.cluster_idle_count > 1) { // Spine thinks rack is not idle but there are idle workers so we reset idle link
                                     reset_linked_iq.execute(hdr.saqr.cluster_id);
                                 }
-                            } else if(hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE || hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE) {
-                                write_queue_len_list_1.execute(hdr.saqr.src_id); // Reply pkts contain the latest qlen of workers, so update the load lists
-                                write_queue_len_list_2.execute(hdr.saqr.src_id);
+                                if (saqr_md.cluster_idle_count == 0) {
+                                    hdr.saqr.dst_id = read_worker_id_map_1.execute(hdr.saqr.cluster_id); // id of min qlen
+                                }
+                            } else if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE || hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE) {
                                 if (saqr_md.cluster_idle_count > 1) { 
                                     // If there are idle workers available, leaf tries to initiate idle linkage:
                                     // Checks whether leaf is already linked with a spine, if not writes the new linkage (we send an idleAdd in next stage to this spine)
@@ -703,14 +627,51 @@ control LeafIngress(
                                     // If the idle workers are not available, reset the linkage (read previous value so that we send idleRemove in next stage)
                                     saqr_md.idle_link = reset_linked_iq.execute(hdr.saqr.cluster_id); 
                                 } 
-                            }  
+                                if (saqr_md.qlen_high > 0) { // Means received qlen was less than our minimum
+                                    saqr_md.id_to_update = update_worker_id_map_1.execute(hdr.saqr.cluster_id); // id of min qlen should be src_id of pkt
+                                    saqr_md.qlen_to_update = saqr_md.qlen_high; // new max qlen is previous min
+                                } else {
+                                    saqr_md.qlen_to_update = hdr.saqr.qlen;
+                                    saqr_md.id_to_update = hdr.saqr.src_id;
+                                }
+                            }
+                        }
+
+                        @stage(5) {
+                            if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK && saqr_md.cluster_idle_count ==0) {
+                                saqr_md.high_ds_qlen = read_queue_len_list_high.execute(hdr.saqr.cluster_id); // min qlen
+                            } else if(hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE) {
+                                saqr_md.high_ds_qlen = update_queue_len_list_high.execute(hdr.saqr.cluster_id); // min qlen
+                            }
                         }
 
                         @stage(6) {
                             if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
-                                compare_queue_len(); // Compare the sampled qlen values (for pow-of-two)
-                                get_larger_queue_len(); 
+                                if (saqr_md.cluster_idle_count == 0) {
+                                    if (saqr_md.high_ds_qlen == 0) { // Means we reached the point where min slot and max slot are crossing each other, should resubmit
+                                        ig_intr_dprsr_md.resubmit_type = RESUBMIT_TYPE_NEW_TASK;
+                                        saqr_md.task_resub_hdr.ds_index_2 = read_worker_id_map_2.execute(hdr.saqr.cluster_id); // id of min qlen
+                                        saqr_md.task_resub_hdr.ds_index_1 = hdr.saqr.dst_id;
+                                        saqr_md.task_resub_hdr.qlen_1 = saqr_md.low_ds_qlen;
+                                    }
+                                } else { // If idle workers available dst_id is the one we read from idle_list
+                                    hdr.saqr.dst_id = saqr_md.idle_ds_id;
+                                    /* 
+                                     * Important: we set qlen field to 1 when sending the task to worker to tell the monitoring agent
+                                     * that this worker were deleted from the idle list of leaf scheduler
+                                     * each worker will send PKT_TYPE_TASK_DONE_IDLE when it becomes idle iff it had 
+                                     * recieved one packet with qlen==1 before. 
+                                     * This ensures that idle list of leaf stays unique: one worker will be added only if it was previously removed. 
+                                     */
+                                    hdr.saqr.qlen = 1;
+                                }
                             } else if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE || hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE) { // Received a reply from worker and rack is not idle (removed the idle link)
+                                if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE) {
+                                    if (saqr_md.high_ds_qlen > 0) { // Means max qlen is updated
+                                        update_worker_id_map_2.execute(hdr.saqr.cluster_id); // id of min qlen
+                                    }
+                                }
+                                saqr_md.spine_view_ok = inc_read_linked_view_drift.execute(hdr.saqr.cluster_id); // Check if drift of load of the spine is larger than threshold
                                 if (saqr_md.cluster_idle_count <= 1) { // Breaking the linkage
                                     if (saqr_md.idle_link != INVALID_VALUE_16bit) { // Send a IDLE_REMOVE packet to the linked spine, mirror original reply to client
                                         hdr.saqr.dst_id = saqr_md.idle_link; // Send idle remove packet to the linked spine
@@ -746,45 +707,7 @@ control LeafIngress(
                         }
 
                         @stage(7) {
-                            calculate_queue_len_diff();
-                            if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
-                                if (saqr_md.cluster_idle_count == 0) {
-                                    if (saqr_md.selected_ds_qlen == saqr_md.random_ds_qlen_1) { // If minimum qlen belongs to our first sample
-                                        hdr.saqr.dst_id = saqr_md.random_id_1; // Set dst_id to id of first sample
-                                        // line below is used in case of resubmission, we always keep the id of *not selected* in task_resub_hdr.ds_index_2
-                                        saqr_md.task_resub_hdr.ds_index_2 = saqr_md.random_id_2; 
-                                    } else { // If minimum qlen belongs to our second sample
-                                        hdr.saqr.dst_id = saqr_md.random_id_2;
-                                        saqr_md.task_resub_hdr.ds_index_2 = saqr_md.random_id_1;
-                                    }
-                                } else { // If idle workers available dst_id is the one we read from idle_list
-                                    hdr.saqr.dst_id = saqr_md.idle_ds_id;
-                                }
-                            } else if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE) {
-                                saqr_md.spine_view_ok = inc_read_linked_view_drift.execute(hdr.saqr.cluster_id); // Check if drift of load of the spine is larger than threshold
-                            } 
-                        }
-
-                        @stage(8) {
-                            if (hdr.saqr.pkt_type==PKT_TYPE_TASK_DONE_IDLE || hdr.saqr.pkt_type==PKT_TYPE_TASK_DONE){
-                                reset_deferred_queue_len_list_1.execute(hdr.saqr.src_id); // Just updated the queue_len_list so write 0 on deferred qlen reg (aka. drift)
-
-                            } else if(hdr.saqr.pkt_type==PKT_TYPE_NEW_TASK && saqr_md.cluster_idle_count == 0) {
-                                if (saqr_md.random_id_2 != saqr_md.random_id_1) {
-                                    // Action below Returns QL[dst_id] + Deferred[dst_id] if resubmission needed o.t it will return 0
-                                    // task_resub_hdr.qlen_1  will contain the complete load info about the node we initially selected
-                                    // and its used in resub path
-                                    saqr_md.task_resub_hdr.qlen_1 = check_deferred_queue_len_list_1.execute(hdr.saqr.dst_id); 
-                                    // keep the ID of selected dst in ds_index_1
-                                    saqr_md.task_resub_hdr.ds_index_1 = hdr.saqr.dst_id;
-                                } else { // In case two samples point to the same cell, we do not need to resubmit just increment deferred list
-                                    inc_deferred_queue_len_list_1.execute(hdr.saqr.dst_id);
-                                }
-                            }
-                        }
-                        @stage(9){
                             if (hdr.saqr.pkt_type==PKT_TYPE_TASK_DONE_IDLE || hdr.saqr.pkt_type==PKT_TYPE_TASK_DONE) {
-                                reset_deferred_queue_len_list_2.execute(hdr.saqr.src_id); // Just updated the queue_len_list so write 0 on deferred reg
                                 if (saqr_md.spine_view_ok == 0) { // Need to send a new load signal to spine 
                                     /* 
                                     Desired behaviour: Mirror premitive (emit invoked in ingrdeparser) will send the original reply to the client
@@ -804,25 +727,11 @@ control LeafIngress(
                                     hdr.saqr.dst_id = saqr_md.linked_sq_id;
                                     ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE; 
                                 }
-                            } else if(hdr.saqr.pkt_type==PKT_TYPE_NEW_TASK) {
-                                if (saqr_md.cluster_idle_count == 0){
-                                    if(saqr_md.task_resub_hdr.qlen_1 == 0) { // This return value means that we do not need to check deffered qlens, difference between samples were larger than drift so our decision is still valid
-                                        inc_deferred_queue_len_list_2.execute(hdr.saqr.dst_id); // increment the second copy to be consistent with first one
-                                    } else { // our decision might be invalid, need to check the deffered queue lens for the sample that was greater (not_selected) and resubmit
-                                        ig_intr_dprsr_md.resubmit_type = RESUBMIT_TYPE_NEW_TASK;
-                                        saqr_md.task_resub_hdr.qlen_2 = read_deferred_queue_len_list_2.execute(saqr_md.task_resub_hdr.ds_index_2);
-                                    }
-                                } else { // If there were idle workers avilable, we poped that worker from the idle list. 
-                                    /* 
-                                     * Important: we set qlen field to 1 when sending the task to worker to tell the monitoring agent
-                                     * that this worker were deleted from the idle list of leaf scheduler
-                                     * each worker will send PKT_TYPE_TASK_DONE_IDLE when it becomes idle iff it had 
-                                     * recieved one packet with qlen==1 before. 
-                                     * This ensures that idle list of leaf stays unique: one worker will be added only if it was previously removed. 
-                                     */
-                                    hdr.saqr.qlen = 1;
-                                }
                             } 
+                        }
+
+                        @stage(8) {
+                           
                         }
                     }
                     forward_saqr_switch_dst.apply(); // Forwarding tables... 

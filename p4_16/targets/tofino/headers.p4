@@ -125,16 +125,24 @@ struct saqr_metadata_t {
     bit<16> random_id_2;
     bit<16> random_ds_index_1;
     bit<16> random_ds_index_2;
+    bit<16> id_to_update;
+    bit<16> low_ds_id;
+    bit<16> high_ds_id;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_1;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_2;
 
     bit<QUEUE_LEN_FIXED_POINT_SIZE> random_ds_qlen_1;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> random_ds_qlen_2;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> qlen_high;
 
     bit<QUEUE_LEN_FIXED_POINT_SIZE> selected_correct_qlen;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> not_selected_correct_qlen;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> min_correct_qlen;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> selected_ds_qlen;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> qlen_to_update;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> low_ds_qlen;
+    bit<QUEUE_LEN_FIXED_POINT_SIZE> high_ds_qlen;
+    
     bit<QUEUE_LEN_FIXED_POINT_SIZE> not_selected_ds_qlen;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> queue_len_diff;
 
