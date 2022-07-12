@@ -1,5 +1,5 @@
 
-# saqr-p4
+# saqr-p4 [Mem. Efficient Implementation]
 This repo contains the P4 switch implementation for **Saqr: Distributed In-network Task Scheduler for Datacenters**.
 
 ## Repository Structure
