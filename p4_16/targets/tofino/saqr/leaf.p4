@@ -537,7 +537,7 @@ control LeafIngress(
             }
 
             action send_pkt_to_cpu() {
-                hdr.saqr.dst_id = PORT_PCI_CPU;
+                //hdr.saqr.dst_id = PORT_PCI_CPU; Don't change dst_id, needed by upper-layer (controller logic)
                 ig_intr_tm_md.ucast_egress_port = PORT_PCI_CPU;
             }
 
