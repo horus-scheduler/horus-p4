@@ -91,6 +91,11 @@ sudo -E ./run_switchd.sh -p <program-name>
 ```
 
 #### Setup ports
+
+There are two options to setup the ports: Manual or Automated.
+
+For **manual** setup, follow these instructions:
+
 In the bf-shell insert the following commands:
 ```
 bfshell> ucli
@@ -100,9 +105,19 @@ bf-sde> pm
 Now that we are in port manager, we will execute the port setup commands from the "port_commands.txt".
 Simply copy and paste these commands to the CLI. 
 
-> Side Note: This step should be ideally automated using the python controller. I couldn't find the proper library and instructions for the port setup in python.
+For **automated** setup, run the following command:
+```
+sudo -E ./run_bfshell.sh -b /home/p4/Projects/horus_controller/scripts/tofino/ports.py
+```
 
-Use ```show``` command to verify that ports are enabled. Under the "OPR" column,  port status should be "UP", otherwise port is "DOWN". Also, the numbers shown under "D_P" column are the port numbers that are used by the controller. E.g, to forward packet to port 1/0 (first link of the breakout cable), the egress port should set to 132. 
+
+To **verify** that ports are enabled after setting up the ports, either using the Manual or Automated option, run the following commands from a ```bf_shell``` session:
+```
+bfshell> ucli
+bf-sde> pm.show
+```
+
+Under the "OPR" column,  port status should be "UP", otherwise port is "DOWN". Also, the numbers shown under "D_P" column are the port numbers that are used by the controller. E.g, to forward packet to port 1/0 (first link of the breakout cable), the egress port should set to 132. 
 
 #### Run the controller
 Open another shell to the switch contoller and in the second terminal window do the following:
