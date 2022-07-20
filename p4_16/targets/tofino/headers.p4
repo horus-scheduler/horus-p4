@@ -125,6 +125,7 @@ struct saqr_metadata_t {
     bit<16> random_id_2;
     bit<16> random_ds_index_1;
     bit<16> random_ds_index_2;
+    bit<16> child_switch_index;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_1;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_2;
 
@@ -143,19 +144,19 @@ struct saqr_metadata_t {
     bit<16> idle_ds_id;
     bit<16> selected_spine_iq_len;
     bit<16> last_iq_len;
-	bit<16> last_probed_id;
-	bit<16> spine_to_link_iq;
+    bit<16> last_probed_id;
+    bit<16> spine_to_link_iq;
     bit<16> idle_link;
-	bit<16> received_dst_id;
+    bit<16> received_dst_id;
     bit<16> received_src_id;
     bit<16> virtual_leaf_id; // Used for virtualizing the single switch only in testbed (not for actual implementation)
-	bit<16> num_additional_signal_needed;
-	bit<16> cluster_max_linked_leafs;
-	bit<16> mirror_dst_id; // Usage similar to hdr.dst_id but this is for mirroring
-	bit<16> lid_ds_index;
-	bit<16> idle_id_to_write;
-	task_resub_hdr_t task_resub_hdr;
-	bit<8> idle_len_8bit;
+    bit<16> num_additional_signal_needed;
+    bit<16> cluster_max_linked_leafs;
+    bit<16> mirror_dst_id; // Usage similar to hdr.dst_id but this is for mirroring
+    bit<16> lid_ds_index;
+    bit<16> idle_id_to_write;
+    task_resub_hdr_t task_resub_hdr;
+    bit<8> idle_len_8bit;
     bit<16> spine_view_ok;
     bit<16> idle_rr_index;
     bit<16> selected_idle_index;
