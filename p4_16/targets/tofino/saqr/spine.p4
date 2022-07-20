@@ -1,9 +1,9 @@
 #include <core.p4>
 #include <tna.p4>
 
-#include "./common/headers.p4"
-#include "./common/util.p4"
-#include "./headers.p4"
+#include "../common/headers.p4"
+#include "../common/util.p4"
+#include "../headers.p4"
 
 
 /*
@@ -27,7 +27,6 @@ control SpineIngress(
         in ingress_intrinsic_metadata_from_parser_t ig_intr_prsr_md,
         inout ingress_intrinsic_metadata_for_deparser_t ig_intr_dprsr_md,
         inout ingress_intrinsic_metadata_for_tm_t ig_intr_tm_md) {
-
     
 
     /********  Register decelarations *********/

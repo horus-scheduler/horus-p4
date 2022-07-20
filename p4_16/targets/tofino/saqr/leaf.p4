@@ -1,9 +1,9 @@
 #include <core.p4>
 #include <tna.p4>
 
-#include "./common/headers.p4"
-#include "./common/util.p4"
-#include "headers.p4"
+#include "../common/headers.p4"
+#include "../common/util.p4"
+#include "../headers.p4"
 
 /* Implementation of Saqr Leaf 
  * Comments with the tag <TESTBEDONLY> mark the parts of the code that were modified for emulating multiple leaf schedulers using one switch.
