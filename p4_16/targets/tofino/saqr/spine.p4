@@ -368,6 +368,22 @@ control SpineIngress(
         default_action = NoAction;
     }
     
+    action act_get_switch_index(switch_id_t switch_index) {
+        saqr_md.child_switch_index = switch_index;
+    }
+    table get_switch_index {
+        key = {
+            hdr.saqr.cluster_id: exact;
+            hdr.saqr.src_id: exact;
+        }
+        actions = {
+            act_get_switch_index;
+            NoAction;
+        }
+            size = HDR_CLUSTER_ID_SIZE;
+            default_action = NoAction;
+    }
+
     action act_get_rand_leaf_id_2 (bit <16> leaf_id){
         saqr_md.random_id_2 = leaf_id;
     }
@@ -414,6 +430,7 @@ control SpineIngress(
                 get_leaf_start_idx ();
                 get_cluster_num_valid_leafs.apply();
                 gen_random_leaf_index_16();
+                
                 if (ig_intr_md.resubmit_flag != 0) {
                     compare_correct_queue_len();
                     inc_stat_count_resub.execute(hdr.saqr.cluster_id);
@@ -423,6 +440,9 @@ control SpineIngress(
                 } else if (hdr.saqr.pkt_type == PKT_TYPE_IDLE_REMOVE && ig_intr_md.resubmit_flag == 0) { // Only decrement idle count (pointer to idle_list) in first pass of removal
                     saqr_md.cluster_idle_count = read_and_dec_idle_count.execute(hdr.saqr.cluster_id);
                 } else {
+                    if (hdr.saqr.pkt_type == PKT_TYPE_QUEUE_SIGNAL){
+                        get_switch_index.apply(); // Get index of the switch in the qlen list
+                    }
                     saqr_md.cluster_idle_count = read_idle_count.execute(hdr.saqr.cluster_id); // Get num_idle leafs (pointer to top of stack)
                 }   
             }
@@ -520,13 +540,13 @@ control SpineIngress(
                      }
                 } else {
                     if(hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK && saqr_md.cluster_idle_count == 0) {
-                        saqr_md.random_ds_qlen_1 = read_queue_len_list_1.execute(saqr_md.random_id_1); // Read qlen for leafID1
-                        saqr_md.random_ds_qlen_2 = read_queue_len_list_2.execute(saqr_md.random_id_2); // Read qlen for leafID2
+                        saqr_md.random_ds_qlen_1 = read_queue_len_list_1.execute(saqr_md.random_ds_index_1); // Read qlen for leafID1
+                        saqr_md.random_ds_qlen_2 = read_queue_len_list_2.execute(saqr_md.random_ds_index_2); // Read qlen for leafID2
                         set_queue_len_unit_1.apply(); // Get 1/#workers in these two racks it is important since spine needs to keep track of the load *after* making a decision
                         set_queue_len_unit_2.apply();
                     } else if (hdr.saqr.pkt_type == PKT_TYPE_QUEUE_SIGNAL) {
-                        write_queue_len_list_1.execute(saqr_md.cluster_absolute_leaf_index); // Write the qlen at corresponding index for the leaf in this cluster
-                        write_queue_len_list_2.execute(saqr_md.cluster_absolute_leaf_index); // Write the qlen at corresponding index for the leaf in this cluster
+                        write_queue_len_list_1.execute(saqr_md.child_switch_index); // Write the qlen at corresponding index for the leaf in this cluster
+                        write_queue_len_list_2.execute(saqr_md.child_switch_index); // Write the qlen at corresponding index for the leaf in this cluster
                     } else if (hdr.saqr.pkt_type == PKT_TYPE_IDLE_REMOVE) {
                         if (saqr_md.task_resub_hdr.ds_index_2 == INVALID_VALUE_16bit) {
                             saqr_md.task_resub_hdr.ds_index_1 = INVALID_VALUE_16bit;
