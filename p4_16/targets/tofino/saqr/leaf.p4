@@ -351,6 +351,11 @@ control LeafIngress(
                 saqr_md.idle_ds_index = saqr_md.cluster_ds_start_idx + (bit <16>) saqr_md.cluster_idle_count;
             }
 
+            // Calculates the mirror dst id based on the actual dst_id and the emulated leaf index (TESTBEDONLY)
+            action calc_mirror_dst_id() {
+                saqr_md.mirror_dst_id = hdr.saqr.dst_id + hdr.saqr.cluster_id;
+            }
+
             // Since pointer points to *next available slot* in idle list. We decrement it when reading an idle node.
             action get_curr_idle_index() {
                 saqr_md.idle_ds_index = saqr_md.idle_ds_index -1;
@@ -635,7 +640,7 @@ control LeafIngress(
                         }
                         
                         @stage(2) {
-                            saqr_md.mirror_dst_id = hdr.saqr.dst_id; // We want the original pkt to reach its destination (done later by mirroring the orignial pkt)
+                            calc_mirror_dst_id(); // We want the original pkt to reach its destination (done later by mirroring the orignial pkt)
                             saqr_md.received_dst_id = hdr.saqr.dst_id; //  Keep received dst_id so that we can swap src_id dst_id to reply to other switches
                             if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK){
                                 saqr_md.task_counter = inc_stat_count_task.execute(0);
