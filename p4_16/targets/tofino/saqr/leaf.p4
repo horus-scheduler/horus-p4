@@ -343,6 +343,11 @@ control LeafIngress(
                 saqr_md.idle_ds_index = saqr_md.idle_ds_index -1;
             }
 
+            // Calculates the mirror dst id based on the actual dst_id and the emulated leaf index (TESTBEDONLY)
+            action calc_mirror_dst_id() {
+                saqr_md.mirror_dst_id = hdr.saqr.dst_id + hdr.saqr.cluster_id;
+            }
+
             action _drop() { // Drop packet.
                 ig_intr_dprsr_md.drop_ctl = 0x1; 
             }
@@ -393,6 +398,8 @@ control LeafIngress(
             table forward_saqr_switch_dst {
                 key = {
                     hdr.saqr.dst_id: exact;
+                    // TESTBEDONLY: to diffrentiate ports of virtual leaves
+                    hdr.saqr.cluster_id: exact;
                 }
                 actions = {
                     act_forward_saqr;
@@ -573,7 +580,7 @@ control LeafIngress(
                         }
                         
                         @stage(2) {
-                            saqr_md.mirror_dst_id = hdr.saqr.dst_id; // We want the original pkt to reach its destination (done later by mirroring the orignial pkt)
+                            calc_mirror_dst_id(); // We want the original pkt to reach its destination (done later by mirroring the orignial pkt)
                             saqr_md.received_dst_id = hdr.saqr.dst_id; //  Keep received dst_id so that we can swap src_id dst_id to reply to other switches
                             if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK){
                                 saqr_md.task_counter = inc_stat_count_task.execute(0);
@@ -698,6 +705,7 @@ control LeafIngress(
                                         hdr.saqr.dst_id = saqr_md.spine_to_link_iq;
                                         //hdr.saqr.src_id = SWITCH_ID; 
                                         hdr.saqr.src_id = hdr.saqr.cluster_id; // Only for the virtual leaf in testbed experimetns TODO: Constant value switch id for the production
+                                        hdr.saqr.qlen = saqr_md.aggregate_queue_len;
                                         hdr.saqr.pkt_type = PKT_TYPE_IDLE_SIGNAL; // Now change to idle signal to notify the selected spine
                                         inc_stat_count_idle_signal.execute(hdr.saqr.cluster_id);
                                         ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE;

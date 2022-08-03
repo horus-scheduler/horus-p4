@@ -390,7 +390,7 @@ control SpineIngress(
                     }
                 } else if (hdr.saqr.pkt_type == PKT_TYPE_IDLE_REMOVE) { 
                     saqr_md.task_resub_hdr.ds_index_2 = saqr_md.idle_ds_id; // put last idle node in resub header so we write it on the pos of deleted idle node in resub path
-                }  else if (hdr.saqr.pkt_type == PKT_TYPE_QUEUE_SIGNAL) {
+                }  else if (hdr.saqr.pkt_type == PKT_TYPE_QUEUE_SIGNAL || hdr.saqr.pkt_type == PKT_TYPE_IDLE_SIGNAL) {
                     saqr_md.high_ds_qlen = update_queue_len_list_high.execute(hdr.saqr.cluster_id); // high qlen maybe updated if we received smaller qlen
                 }
             }
@@ -399,6 +399,7 @@ control SpineIngress(
                 if (ig_intr_md.resubmit_flag != 0) {
                     if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
                         write_leaf_id_map_2.execute(hdr.saqr.cluster_id);
+                        hdr.saqr.dst_id = saqr_md.task_resub_hdr.ds_index_2;
                     }
                 } else {
                     if(hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
@@ -411,7 +412,7 @@ control SpineIngress(
                             hdr.saqr.dst_id = saqr_md.low_ds_id;
                             }
                         }
-                    } else if (hdr.saqr.pkt_type == PKT_TYPE_QUEUE_SIGNAL) {
+                    } else if (hdr.saqr.pkt_type == PKT_TYPE_QUEUE_SIGNAL || hdr.saqr.pkt_type == PKT_TYPE_IDLE_SIGNAL) {
                         if (saqr_md.high_ds_qlen != 0) { // Means we updated high qlen (so update id mapping as well)
                             update_leaf_id_map_2.execute(hdr.saqr.cluster_id);
                         }
@@ -526,4 +527,3 @@ control SpineEgress(
         }
     }
 }
-
