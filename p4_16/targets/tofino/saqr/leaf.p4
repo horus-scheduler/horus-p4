@@ -411,6 +411,8 @@ control LeafIngress(
             table forward_saqr_switch_dst {
                 key = {
                     hdr.saqr.dst_id: exact;
+                    // TESTBEDONLY: to diffrentiate ports of virtual leaves
+                    hdr.saqr.cluster_id: exact;
                 }
                 actions = {
                     act_forward_saqr;
