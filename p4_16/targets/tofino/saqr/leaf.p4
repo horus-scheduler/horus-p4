@@ -832,7 +832,9 @@ control LeafIngress(
                             } 
                         }
                     }
-                    forward_saqr_switch_dst.apply(); // Forwarding tables... 
+                    if (hdr.saqr.pkt_type != PKT_TYPE_WORKER_ID_ACK && hdr.saqr.pkt_type != PKT_TYPE_KEEP_ALIVE){
+                        forward_saqr_switch_dst.apply(); // Forwarding tables...     
+                    }
                     
                 }  else if (hdr.ipv4.isValid()) { // Regular switching procedure
                     // TODO: Not ported the ip matching tables for now
