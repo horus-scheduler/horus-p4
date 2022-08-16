@@ -10,12 +10,12 @@ Pipeline(SaqrIngressParser(),
          SaqrEgressDeparser()
          ) pipe_leaf;
 
-// Pipeline(SpineIngressParser(),
-//          SpineIngress(),
-//          SpineIngressDeparser(),
-//          SpineEgressParser(),
-//          SpineEgress(),
-//          SpineEgressDeparser()
-//          ) pipe_spine;
+ Pipeline(SpineIngressParser(),
+          SpineIngress(),
+          SpineIngressDeparser(),
+          SpineEgressParser(),
+          SpineEgress(),
+          SpineEgressDeparser()
+          ) pipe_spine;
 
-Switch(pipe_leaf) main;
+Switch(pipe_spine, pipe_leaf) main;

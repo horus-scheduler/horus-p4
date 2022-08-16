@@ -136,6 +136,7 @@ struct saqr_metadata_t {
     bit<QUEUE_LEN_FIXED_POINT_SIZE> not_selected_correct_qlen;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> min_correct_qlen;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> selected_ds_qlen;
+    bit<16> selected_ds_index;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> not_selected_ds_qlen;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> queue_len_diff;
 
