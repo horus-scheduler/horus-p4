@@ -29,6 +29,7 @@ control SpineIngress(
         inout ingress_intrinsic_metadata_for_tm_t ig_intr_tm_md) {
 
     Random<bit<16>>() random_ds_id;
+    Random<bit<16>>() random_ds_id_retry;
     Random<bit<1>>() random_helper_1bit;
 
     /********  Register decelarations *********/
@@ -174,11 +175,11 @@ control SpineIngress(
             }
         };
 
-    Register<bit<16>, _>(MAX_VCLUSTERS) idle_rr_counter; // 
-        RegisterAction<bit<16>, _, bit<16>>(idle_rr_counter) inc_idle_rr_counter  = {
+    Register<bit<16>, _>(MAX_VCLUSTERS) rr_counter; // 
+        RegisterAction<bit<16>, _, bit<16>>(rr_counter) inc_rr_counter  = {
             void apply(inout bit<16> value, out bit<16> rv) {
                 rv = value;
-                if (value >= (bit<16>) saqr_md.cluster_idle_count - 1) {
+                if (value >= (bit<16>) saqr_md.cluster_num_valid_queue_signals - 1) {
                     value = 0;
                 } else {
                     value = value + 1;
@@ -233,33 +234,47 @@ control SpineIngress(
     }
     //////// 
     action gen_random_leaf_index_16() {
-        saqr_md.random_ds_index_1 = (bit<16>) random_ds_id.get();
-        saqr_md.random_ds_index_2 = (bit<16>) random_ds_id.get();
+        saqr_md.t1_random_ds_index_1 = (bit<16>) random_ds_id.get();
+        saqr_md.t1_random_ds_index_2 = (bit<16>) random_ds_id.get();
+    }
 
+    action retry_gen_random_leaf_index_16(){
+        saqr_md.t2_random_ds_index_1 = (bit<16>) random_ds_id_retry.get();
+        saqr_md.t2_random_ds_index_2 = (bit<16>) random_ds_id_retry.get();
     }
 
     action adjust_random_leaf_index_5() {
-        saqr_md.random_ds_index_1 = saqr_md.random_ds_index_1 >> 11;
-        saqr_md.random_ds_index_2 = saqr_md.random_ds_index_2 >> 11;
+        saqr_md.t1_random_ds_index_1 = saqr_md.t1_random_ds_index_1 >> 11;
+        saqr_md.t1_random_ds_index_2 = saqr_md.t1_random_ds_index_2 >> 11;
+        saqr_md.t2_random_ds_index_1 = saqr_md.t2_random_ds_index_1 >> 11;
+        saqr_md.t2_random_ds_index_2 = saqr_md.t2_random_ds_index_2 >> 11;
     }
     action adjust_random_leaf_index_4() {
-        saqr_md.random_ds_index_1 = saqr_md.random_ds_index_1 >> 12;
-        saqr_md.random_ds_index_2 = saqr_md.random_ds_index_2 >> 12;
+        saqr_md.t1_random_ds_index_1 = saqr_md.t1_random_ds_index_1 >> 12;
+        saqr_md.t1_random_ds_index_2 = saqr_md.t1_random_ds_index_2 >> 12;
+        saqr_md.t2_random_ds_index_1 = saqr_md.t2_random_ds_index_1 >> 12;
+        saqr_md.t2_random_ds_index_2 = saqr_md.t2_random_ds_index_2 >> 12;
     }
 
     action adjust_random_leaf_index_3() {
-        saqr_md.random_ds_index_1 = saqr_md.random_ds_index_1 >> 13;
-        saqr_md.random_ds_index_2 = saqr_md.random_ds_index_2 >> 13;
+        saqr_md.t1_random_ds_index_1 = saqr_md.t1_random_ds_index_1 >> 13;
+        saqr_md.t1_random_ds_index_2 = saqr_md.t1_random_ds_index_2 >> 13;
+        saqr_md.t2_random_ds_index_1 = saqr_md.t2_random_ds_index_1 >> 13;
+        saqr_md.t2_random_ds_index_2 = saqr_md.t2_random_ds_index_2 >> 13;
     }
 
     action adjust_random_leaf_index_2() {
-        saqr_md.random_ds_index_1 = saqr_md.random_ds_index_1 >> 14;
-        saqr_md.random_ds_index_2 = saqr_md.random_ds_index_2 >> 14;
+        saqr_md.t1_random_ds_index_1 = saqr_md.t1_random_ds_index_1 >> 14;
+        saqr_md.t1_random_ds_index_2 = saqr_md.t1_random_ds_index_2 >> 14;
+        saqr_md.t2_random_ds_index_1 = saqr_md.t2_random_ds_index_1 >> 14;
+        saqr_md.t2_random_ds_index_2 = saqr_md.t2_random_ds_index_2 >> 14;
     }
 
     action adjust_random_leaf_index_1() {
-        saqr_md.random_ds_index_1 = saqr_md.random_ds_index_1 >> 15;
-        saqr_md.random_ds_index_2 = saqr_md.random_ds_index_2 >> 15;
+        saqr_md.t1_random_ds_index_1 = saqr_md.t1_random_ds_index_1 >> 15;
+        saqr_md.t1_random_ds_index_2 = saqr_md.t1_random_ds_index_2 >> 15;
+        saqr_md.t2_random_ds_index_1 = saqr_md.t2_random_ds_index_1 >> 15;
+        saqr_md.t2_random_ds_index_2 = saqr_md.t2_random_ds_index_2 >> 15;
     }
 
     table adjust_random_range_sq_leafs { // Adjust the random generated number (16 bit) based on number of available queue len signals
@@ -274,7 +289,7 @@ control SpineIngress(
             adjust_random_leaf_index_1(); // #bits == 1 --> 0-1
             NoAction; // default 16 bits
         }
-        size = 16;
+        size = 64;
         default_action = NoAction;
     }
    
@@ -321,6 +336,13 @@ control SpineIngress(
 
     action dec_repeated_rand() {
         saqr_md.random_ds_index_2 = saqr_md.random_ds_index_2-1;
+    }
+
+    action compare_random_idx() {
+        saqr_md.t1_random_ds_index_1 = min(saqr_md.cluster_num_valid_queue_signals, saqr_md.t1_random_ds_index_1);
+        saqr_md.t1_random_ds_index_2 = min(saqr_md.cluster_num_valid_queue_signals, saqr_md.t1_random_ds_index_2);
+        saqr_md.t2_random_ds_index_1 = min(saqr_md.cluster_num_valid_queue_signals, saqr_md.t2_random_ds_index_1);
+        saqr_md.t2_random_ds_index_2 = min(saqr_md.cluster_num_valid_queue_signals, saqr_md.t2_random_ds_index_2);
     }
 
     action compare_queue_len() {
@@ -432,11 +454,12 @@ control SpineIngress(
              * Therefore, we set cluster_id to 0 for every packet received by spine but we set different cluster_id for each leaf on the outgoing packets from spine to the leaf. 
             */
             hdr.saqr.cluster_id = 0;
+            gen_random_leaf_index_16();
+
             @stage(1) {
-                get_leaf_start_idx ();
+                get_leaf_start_idx();
+                retry_gen_random_leaf_index_16();
                 get_cluster_num_valid_leafs.apply();
-                gen_random_leaf_index_16();
-                
                 if (ig_intr_md.resubmit_flag != 0) {
                     compare_correct_queue_len();
                     inc_stat_count_resub.execute(hdr.saqr.cluster_id);
@@ -446,6 +469,7 @@ control SpineIngress(
                 } else if (hdr.saqr.pkt_type == PKT_TYPE_IDLE_REMOVE && ig_intr_md.resubmit_flag == 0) { // Only decrement idle count (pointer to idle_list) in first pass of removal
                     saqr_md.cluster_idle_count = read_and_dec_idle_count.execute(hdr.saqr.cluster_id);
                 } else {
+                    
                     if (hdr.saqr.pkt_type == PKT_TYPE_QUEUE_SIGNAL){
                         get_switch_index.apply(); // Get index of the switch in the qlen list
                     }
@@ -466,8 +490,9 @@ control SpineIngress(
                         }
                     }
                 } else {
+                    
+                    adjust_random_range_sq_leafs.apply(); //  We want to select a random node from available qlen signals 
                     if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK){
-                        saqr_md.idle_rr_index = inc_idle_rr_counter.execute(hdr.saqr.cluster_id);
                         saqr_md.task_counter = inc_stat_count_task.execute(0);
                     }
                 }
@@ -481,7 +506,8 @@ control SpineIngress(
                         update_idle_list_idx_mapping.execute(saqr_md.task_resub_hdr.ds_index_2);
                     }
                 } else {
-                    adjust_random_range_sq_leafs.apply(); //  We want to select a random node from available qlen signals 
+                    compare_random_idx();
+                    
                     if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
                         select_idle_index(); // 
                     }  else if (hdr.saqr.pkt_type == PKT_TYPE_IDLE_SIGNAL) {
@@ -505,16 +531,28 @@ control SpineIngress(
                         saqr_md.random_ds_index_1 = saqr_md.selected_ds_index; // we already selected minimum set this so we can get the corresponding id of the selected index in random_id_1 meta field
                     }
                 } else {
-                    if (saqr_md.random_ds_index_1 == saqr_md.random_ds_index_2) {
-                        if (saqr_md.random_ds_index_1==0){
-                            inc_repeated_rand();
-                        } else {
-                            dec_repeated_rand();
-                        }
-                    }
                     if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
                         saqr_md.idle_ds_id = read_idle_list.execute(saqr_md.idle_ds_index);
-
+                        if (saqr_md.t1_random_ds_index_1 == saqr_md.cluster_num_valid_queue_signals) {  // generated index was out-of-range
+                        if(saqr_md.t2_random_ds_index_1 == saqr_md.cluster_num_valid_queue_signals) {
+                            saqr_md.random_ds_index_1 = inc_rr_counter.execute(hdr.saqr.cluster_id);   // Both tries out-of-range, use RR index sample instead of random
+                        } else {
+                            /* 
+                             * Note: Had compilation error without this @in_hash pragma (compiler error not clear), most probably related to PHV allocation based on MAU group:
+                             * Every metadata fields that are related (overall in the pipeline), will be in the same MAU group which has a limited K-bit (e.g., here 16 bit) PHVs
+                             * This will tell the compiler to put the saqr_md.random_ds_index_1 in seperate MAU group 
+                             * See: //https://community.intel.com/t5/Intel-Connectivity-Research/PHV-allocation-problem/m-p/1392964
+                            */
+                            @in_hash { 
+                                saqr_md.random_ds_index_1 = saqr_md.t2_random_ds_index_1;    // Use second try (another random generated number)
+                            }   
+                        }
+                    } else {
+                        @in_hash {
+                            saqr_md.random_ds_index_1 = saqr_md.t1_random_ds_index_1; // First try was fine
+                        }
+                    }
+                    
                     }  else if (hdr.saqr.pkt_type == PKT_TYPE_IDLE_REMOVE){
                         compare_idle_index();
                         saqr_md.idle_ds_id = read_invalidate_idle_list.execute(saqr_md.idle_ds_index);
@@ -529,30 +567,38 @@ control SpineIngress(
             
             @stage(5) {
                 if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
-                    if(saqr_md.cluster_idle_count == 0){
-                        get_rand_leaf_id_1.apply(); // Read the leaf ID 1 associated with generated random index
-                        get_rand_leaf_id_2.apply(); // Read the leaf ID 2 associated with generated random index
-                    } else {
-                        saqr_md.random_id_1 = saqr_md.idle_ds_id;
-                    }
+                    if(saqr_md.cluster_idle_count == 0) {
+                        if (saqr_md.t1_random_ds_index_2 == saqr_md.cluster_num_valid_queue_signals) {  // generated index was out-of-range
+                            if(saqr_md.t2_random_ds_index_2 == saqr_md.cluster_num_valid_queue_signals) {
+                                saqr_md.random_ds_index_2 = saqr_md.random_ds_index_1 >> 1;  // Both tries out-of-range, Divide other by two (arbitrary resolve function)
+                            } else {
+                                @in_hash {
+                                    saqr_md.random_ds_index_2 = saqr_md.t2_random_ds_index_2; // Use second try (another random generated number)
+                                }
+                            }
+                        } else {
+                            @in_hash {
+                                saqr_md.random_ds_index_2 = saqr_md.t1_random_ds_index_2;  // First try was fine  
+                            }
+                        }
+                    } 
                 } else if (hdr.saqr.pkt_type == PKT_TYPE_IDLE_REMOVE) { 
                     saqr_md.task_resub_hdr.ds_index_2 = saqr_md.idle_ds_id; // put last idle node in resub header so we write it on the pos of deleted idle node in resub path
                 } 
             }
 
             @stage(6) {
+                get_rand_leaf_id_1.apply(); // Read the leaf ID 1 associated with generated random index
+                get_rand_leaf_id_2.apply(); // Read the leaf ID 2 associated with generated random index
                 if (ig_intr_md.resubmit_flag != 0) {
                      if(hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
                         update_queue_len_list_1.execute(saqr_md.selected_ds_index);
                         update_queue_len_list_2.execute(saqr_md.selected_ds_index);
-                        hdr.saqr.dst_id = saqr_md.random_id_1;
                      }
                 } else {
                     if(hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK && saqr_md.cluster_idle_count == 0) {
                         saqr_md.random_ds_qlen_1 = read_queue_len_list_1.execute(saqr_md.random_ds_index_1); // Read qlen for leafID1
                         saqr_md.random_ds_qlen_2 = read_queue_len_list_2.execute(saqr_md.random_ds_index_2); // Read qlen for leafID2
-                        set_queue_len_unit_1.apply(); // Get 1/#workers in these two racks it is important since spine needs to keep track of the load *after* making a decision
-                        set_queue_len_unit_2.apply();
                     } else if (hdr.saqr.pkt_type == PKT_TYPE_QUEUE_SIGNAL) {
                         write_queue_len_list_1.execute(saqr_md.child_switch_index); // Write the qlen at corresponding index for the leaf in this cluster
                         write_queue_len_list_2.execute(saqr_md.child_switch_index); // Write the qlen at corresponding index for the leaf in this cluster
@@ -568,16 +614,31 @@ control SpineIngress(
             @stage(7) {
                 compare_queue_len();
                 get_larger_queue_len();
-                if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK && ig_intr_md.resubmit_flag == 0) {
+                if (ig_intr_md.resubmit_flag !=0) {
+                    if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK){
+                        hdr.saqr.dst_id = saqr_md.random_id_1;
+                    }
+                } else {
+                    if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
                     write_ingress_tstamp.execute(hdr.saqr.seq_num);
+                    if (saqr_md.cluster_idle_count == 0) {
+                        set_queue_len_unit_1.apply(); // Get 1/#workers in these two racks it is important since spine needs to keep track of the load *after* making a decision
+                        set_queue_len_unit_2.apply();
+                    }
+                }
                 }
             }
 
             @stage(8) {
                 if (ig_intr_md.resubmit_flag == 0) {
                     if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) { 
+                        if (saqr_md.random_ds_index_1 == saqr_md.random_ds_index_2 || saqr_md.cluster_idle_count > 0) {
+                                saqr_md.queue_len_diff = INVALID_VALUE_16bit; // No need to compare qlen diff with drift (in next stages) since rack was selected based on idle list
+                        }
                         if (saqr_md.cluster_idle_count == 0 && saqr_md.cluster_num_valid_queue_signals > 0) {
-                            calculate_queue_len_diff();
+                            if (saqr_md.random_ds_index_1 != saqr_md.random_ds_index_2){
+                                calculate_queue_len_diff();    
+                            }
                             if (saqr_md.selected_ds_qlen == saqr_md.random_ds_qlen_1) {
                                 hdr.saqr.dst_id = saqr_md.random_id_1;
                                 saqr_md.selected_ds_index = saqr_md.random_ds_index_1;
@@ -592,7 +653,7 @@ control SpineIngress(
                                 saqr_md.not_selected_ds_qlen_unit = saqr_md.qlen_unit_1;
                             }
                         } else { // Idle selection
-                            saqr_md.queue_len_diff = INVALID_VALUE_16bit; // No need to compare qlen diff with drift (in next stages) since rack was selected based on idle list
+                            
                             saqr_md.selected_ds_qlen_unit = saqr_md.qlen_unit_1; // Put it selected_ds_qlen_unit so in next stages we increment the average load of this rack 
                             hdr.saqr.dst_id = saqr_md.idle_ds_id;
                             hdr.saqr.qlen = 1; // This is to indicate (to leaf) that spine's view is that leaf is idle and linked with this spine (so that if leaf is not idle anymore it will break the linkage)
@@ -607,9 +668,9 @@ control SpineIngress(
                         reset_deferred_queue_len_list_1.execute(saqr_md.selected_ds_index); // Just updated the queue_len_list so write 0 on deferred reg
                     }
                 } else {
-                    if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK && saqr_md.cluster_num_valid_queue_signals > 0) {
+                    if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK && saqr_md.cluster_idle_count == 0) {
                         
-                        saqr_md.deferred_qlen_1 = check_deferred_queue_len_list_1.execute(hdr.saqr.dst_id); // Returns Deferred[dst_id]
+                        saqr_md.deferred_qlen_1 = check_deferred_queue_len_list_1.execute(saqr_md.selected_ds_index); // Returns Deferred[selected_index]
                         saqr_md.task_resub_hdr.ds_index_1 = saqr_md.selected_ds_index; // We keep the index of the node that initially selected in task_resub_hdr.ds_index_1
                          // Add (1/#workers) to the average load of selected rack (if selected this will be the new average load), 
                          // this is used in resubmission path for selecting the correct node
@@ -618,7 +679,7 @@ control SpineIngress(
                         saqr_md.not_selected_ds_qlen = saqr_md.not_selected_ds_qlen + saqr_md.not_selected_ds_qlen_unit;
                     } else if (hdr.saqr.pkt_type == PKT_TYPE_QUEUE_SIGNAL) {
 
-                        reset_deferred_queue_len_list_1.execute(hdr.saqr.src_id); // Just updated the queue_len_list so write 0 on deferred reg
+                        reset_deferred_queue_len_list_1.execute(saqr_md.child_switch_index); // Just updated the queue_len_list so write 0 on deferred reg
                     }   
                 }
             }
@@ -630,12 +691,12 @@ control SpineIngress(
                     }
                 } else {
                     if (hdr.saqr.pkt_type==PKT_TYPE_QUEUE_SIGNAL){
-                        reset_deferred_queue_len_list_2.execute(hdr.saqr.src_id); // Just updated the queue_len_list so write 0 on deferred reg
+                        reset_deferred_queue_len_list_2.execute(saqr_md.child_switch_index); // Just updated the queue_len_list so write 0 on deferred reg
                         _drop();
-                    } else if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
+                    } else if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK && saqr_md.cluster_idle_count == 0) {
                         saqr_md.task_resub_hdr.qlen_1 = saqr_md.deferred_qlen_1 + saqr_md.selected_ds_qlen;
                         if(saqr_md.deferred_qlen_1 == 0) { // This return value means that we do not need to check deffered qlens, difference between samples were large enough that our decision is still valid
-                            inc_deferred_queue_len_list_2.execute(hdr.saqr.dst_id); // increment the second copy to be consistent with first one
+                            inc_deferred_queue_len_list_2.execute(saqr_md.selected_ds_index); // increment the second copy to be consistent with first one
                         } else { // This means our decision might be invalid, need to check the deffered queue lens and resubmit
                             ig_intr_dprsr_md.resubmit_type = RESUBMIT_TYPE_NEW_TASK;
                             saqr_md.task_resub_hdr.qlen_2 = read_deferred_queue_len_list_2.execute(saqr_md.task_resub_hdr.ds_index_2);

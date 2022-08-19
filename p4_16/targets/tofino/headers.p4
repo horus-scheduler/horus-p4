@@ -58,6 +58,7 @@
 #define RESUBMIT_TYPE_NEW_TASK 1
 #define RESUBMIT_TYPE_IDLE_REMOVE 2
 
+
 const bit<8> INVALID_VALUE_8bit = 8w0x7F;
 const bit<16> INVALID_VALUE_16bit = 16w0x7FFF;
 
@@ -121,10 +122,15 @@ struct saqr_metadata_t {
     bit<16> cluster_num_valid_ds;
     bit<16> cluster_num_valid_us;
     bit<16> cluster_num_valid_queue_signals;
+    bit<16> cluster_num_valid_queue_signals_copy;
     bit<16> random_id_1;
     bit<16> random_id_2;
     bit<16> random_ds_index_1;
     bit<16> random_ds_index_2;
+    bit<16> t1_random_ds_index_1;
+    bit<16> t1_random_ds_index_2;
+    bit<16> t2_random_ds_index_1;
+    bit<16> t2_random_ds_index_2;
     bit<16> child_switch_index;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_1;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_2;
