@@ -108,6 +108,17 @@ parser SpineIngressParser (
         saqr_md.deferred_qlen_1 = 0;
         saqr_md.last_probed_id = INVALID_VALUE_16bit;
         saqr_md.last_iq_len = INVALID_VALUE_16bit;
+
+        saqr_md.is_first_packet = true;
+        saqr_md.is_task_continuation = false;
+        saqr_md.is_last_packet = true;
+
+        saqr_md.request_key_hash = 0;
+        saqr_md.connection_key = 0;
+        saqr_md.is_connection_table_occupied = false;
+
+        saqr_md.candidate_dst_id = 0;
+
         pkt.extract(ig_intr_md);
         transition parse_resub_meta;
     }

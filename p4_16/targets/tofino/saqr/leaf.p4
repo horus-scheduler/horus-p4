@@ -84,8 +84,8 @@ control LeafIngress(
                 };
                 RegisterAction<bit<16>, _, bit<16>>(idle_count) read_and_dec_idle_count = { 
                     void apply(inout bit<16> value, out bit<16> rv) {
+                        rv = value;
                         if (value > 0) { 
-                            rv = value;
                             value = value - 1;
                         }
                     }
@@ -156,7 +156,7 @@ control LeafIngress(
                     }
                 };
                 RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_1) inc_deferred_queue_len_list_1 = {
-                    void apply(inout queue_len_t value, out queue_len_t rv) {
+                    void apply(inout queue_len_t value) {
                             value = value + 1;
                     }
                 };
@@ -227,7 +227,7 @@ control LeafIngress(
                     }
                 };
                 RegisterAction<bit<16>, _, bit<16>>(linked_iq_sched) update_linked_iq  = {
-                    void apply(inout bit<16> value, out bit<16> rv) {    
+                    void apply(inout bit<16> value) {    
                         value = hdr.saqr.src_id;
                     }
                 };
@@ -278,7 +278,7 @@ control LeafIngress(
 
             Register<bit<16>, _>(MAX_VCLUSTERS) idle_link_spine_view; 
                 RegisterAction<bit<16>, _, bit<16>>(idle_link_spine_view) write_idle_link_spine_view  = {
-                    void apply(inout bit<16> value, out bit<16> rv) {
+                    void apply(inout bit<16> value) {
                         value = hdr.saqr.qlen;
                     }
                 };
@@ -299,19 +299,19 @@ control LeafIngress(
             */
             Register<bit<32>, _>(MAX_VCLUSTERS) stat_count_resub; // Spine that ToR has sent last QueueSignal (1 for each vcluster).
                 RegisterAction<bit<32>, _, bit<32>>(stat_count_resub) inc_stat_count_resub  = {
-                    void apply(inout bit<32> value, out bit<32> rv) {
+                    void apply(inout bit<32> value) {
                         value = value + 1;
                     }
             };
             Register<bit<32>, _>(MAX_VCLUSTERS) stat_count_idle_signal; // Spine that ToR has sent last QueueSignal (1 for each vcluster).
                 RegisterAction<bit<32>, _, bit<32>>(stat_count_idle_signal) inc_stat_count_idle_signal  = {
-                    void apply(inout bit<32> value, out bit<32> rv) {
+                    void apply(inout bit<32> value) {
                         value = value + 1;
                     }
             };
             Register<bit<32>, _>(MAX_VCLUSTERS) stat_count_load_signal; // Spine that ToR has sent last QueueSignal (1 for each vcluster).
                 RegisterAction<bit<32>, _, bit<32>>(stat_count_load_signal) inc_stat_count_load_signal  = {
-                    void apply(inout bit<32> value, out bit<32> rv) {
+                    void apply(inout bit<32> value) {
                         value = value + 1;
                     }
             };
@@ -326,7 +326,7 @@ control LeafIngress(
 
             Register<bit<32>, _>(65536) ingress_tstamp; 
             RegisterAction<bit<32>, _, bit<32>>(ingress_tstamp) write_ingress_tstamp  = {
-                void apply(inout bit<32> value, out bit<32> rv) {
+                void apply(inout bit<32> value) {
                     value = saqr_md.ingress_tstamp_clipped;
                 }
             };
@@ -579,6 +579,51 @@ control LeafIngress(
                 saqr_md.queue_len_diff = saqr_md.not_selected_ds_qlen - saqr_md.selected_ds_qlen;
             }
             
+
+            // Occupation data
+            Register<saqr_request_table_record_is_occupied, _>(MAX_NUMBER_OF_PERSISTANT_REQUESTS) request_table_occupation_data;
+                RegisterAction<saqr_request_table_record_is_occupied, _, bit<1>>(request_table_occupation_data) try_occupy = {
+                void apply(inout saqr_request_table_record_is_occupied value, out bit<1> output) {
+                    output = value;
+                    value = value | 0x1;
+                }
+                };
+
+                RegisterAction<saqr_request_table_record_is_occupied, _, void>(request_table_occupation_data) release = {
+                void apply(inout saqr_request_table_record_is_occupied value) {
+                    value = 0;
+                }
+                };
+
+            // Destination ID data
+            Register<saqr_request_table_destination_id, _>(MAX_NUMBER_OF_PERSISTANT_REQUESTS) request_table_destination_id;
+                RegisterAction<saqr_request_table_destination_id, _, saqr_request_table_destination_id>(request_table_destination_id) get_existing_destination_id = {
+                void apply(inout saqr_request_table_destination_id value, out saqr_request_table_destination_id output) {
+                    output = value;
+                }
+                };
+
+                RegisterAction<saqr_request_table_destination_id, _, void>(request_table_destination_id) update_connection_destination = {
+                void apply(inout saqr_request_table_destination_id value) {
+                    value = saqr_md.candidate_dst_id;
+                }
+                };
+
+            
+            Hash<bit<16>>(HashAlgorithm_t.CRC16) request_key_hasher;
+
+            action generate_connection_key() {
+                saqr_md.request_key_hash = request_key_hasher.get(
+                    {   hdr.ipv4.src_addr,
+                        hdr.udp.src_port,
+                        hdr.saqr.cluster_id,
+                        hdr.saqr.src_id,
+                        hdr.saqr.seq_num
+                    }
+                );
+                saqr_md.connection_key = (connection_key_t) (saqr_md.request_key_hash >> (CRC_HASH_SIZE - LOG_2_MAX_NUMBER_OF_PERSISTANT_REQUESTS));
+            }
+
             apply {
                 if (hdr.saqr.isValid()) {  // saqr packet
                     if (ig_intr_md.resubmit_flag != 0) { // Special case: packet is resubmitted just update the indexes
@@ -588,10 +633,12 @@ control LeafIngress(
                         }
                         @stage(1){
                             if (saqr_md.min_correct_qlen == saqr_md.task_resub_hdr.qlen_1) {
-                                hdr.saqr.dst_id = saqr_md.task_resub_hdr.ds_index_1;
+                                // hdr.saqr.dst_id = saqr_md.task_resub_hdr.ds_index_1;
+                                saqr_md.candidate_dst_id = saqr_md.task_resub_hdr.ds_index_1;
                                 saqr_md.selected_ds_qlen = saqr_md.task_resub_hdr.qlen_1 + 1;
                             } else {
-                                hdr.saqr.dst_id = saqr_md.task_resub_hdr.ds_index_2;
+                                // hdr.saqr.dst_id = saqr_md.task_resub_hdr.ds_index_2;
+                                saqr_md.candidate_dst_id = saqr_md.task_resub_hdr.ds_index_2;
                                 saqr_md.selected_ds_qlen = saqr_md.task_resub_hdr.qlen_2 + 1;
                             }
                         }
@@ -609,6 +656,23 @@ control LeafIngress(
                         
                         get_worker_start_idx(); // Get start index (base address) for reg arrays for this vcluster
                         set_queue_len_unit.apply(); // Get (1/#workers in this rack) for this cluster (used for avg. calculation)
+                        
+
+                        if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
+                            saqr_md.is_first_packet = true;    
+                        } else {
+                            saqr_md.is_first_packet = false;
+                        }
+
+                        if (hdr.saqr.pkt_type == PKT_TYPE_TASK_CONTINUATION) {
+                            saqr_md.is_task_continuation = true;    
+                        } else {
+                            saqr_md.is_task_continuation = false;
+                        }
+
+                        saqr_md.is_last_packet = (bool) hdr.saqr.is_last_packet;
+
+                        generate_connection_key();
                         
                         if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE) {  // worker reply and its IDLE, read increment counter (pointer to idle list)
                             saqr_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.saqr.cluster_id);
@@ -721,6 +785,7 @@ control LeafIngress(
                                 if (saqr_md.cluster_idle_count <= 1) { // Breaking the linkage
                                     if (saqr_md.idle_link != INVALID_VALUE_16bit) { // Send a IDLE_REMOVE packet to the linked spine, mirror original reply to client
                                         hdr.saqr.dst_id = saqr_md.idle_link; // Send idle remove packet to the linked spine
+                                        // saqr_md.candidate_dst_id = saqr_md.idle_link; // Send idle remove packet to the linked spine
                                         /* 
                                          * TESTBEDONLY: Here we should set the ID of the leaf switch as src_id, 
                                           but in our experimetns we used cluster_ids to diffrentiate the emulated leaf switches.
@@ -742,6 +807,7 @@ control LeafIngress(
                                           In real world it should be a constant SWITCH_ID. 
                                         */
                                         hdr.saqr.dst_id = saqr_md.spine_to_link_iq;
+                                        // saqr_md.candidate_dst_id = saqr_md.spine_to_link_iq;
                                         //hdr.saqr.src_id = SWITCH_ID; 
                                         hdr.saqr.src_id = hdr.saqr.cluster_id; // Only for the virtual leaf in testbed experimetns TODO: Constant value switch id for the production
                                         hdr.saqr.pkt_type = PKT_TYPE_IDLE_SIGNAL; // Now change to idle signal to notify the selected spine
@@ -757,15 +823,15 @@ control LeafIngress(
                             if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
                                 if (saqr_md.cluster_idle_count == 0) {
                                     if (saqr_md.selected_ds_qlen == saqr_md.random_ds_qlen_1) { // If minimum qlen belongs to our first sample
-                                        hdr.saqr.dst_id = saqr_md.random_id_1; // Set dst_id to id of first sample
+                                        saqr_md.candidate_dst_id = saqr_md.random_id_1; // Set candidate_dst_id to id of first sample
                                         // line below is used in case of resubmission, we always keep the id of *not selected* in task_resub_hdr.ds_index_2
                                         saqr_md.task_resub_hdr.ds_index_2 = saqr_md.random_id_2; 
                                     } else { // If minimum qlen belongs to our second sample
-                                        hdr.saqr.dst_id = saqr_md.random_id_2;
+                                        saqr_md.candidate_dst_id = saqr_md.random_id_2;
                                         saqr_md.task_resub_hdr.ds_index_2 = saqr_md.random_id_1;
                                     }
                                 } else { // If idle workers available dst_id is the one we read from idle_list
-                                    hdr.saqr.dst_id = saqr_md.idle_ds_id;
+                                    saqr_md.candidate_dst_id = saqr_md.idle_ds_id;
                                 }
                             } else if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE) {
                                 saqr_md.spine_view_ok = inc_read_linked_view_drift.execute(hdr.saqr.cluster_id); // Check if drift of load of the spine is larger than threshold
@@ -808,7 +874,7 @@ control LeafIngress(
                                     hdr.saqr.src_id = hdr.saqr.cluster_id; 
                                     hdr.saqr.qlen = saqr_md.aggregate_queue_len;
                                     inc_stat_count_load_signal.execute(hdr.saqr.cluster_id);
-                                    hdr.saqr.dst_id = saqr_md.linked_sq_id;
+                                    saqr_md.candidate_dst_id = saqr_md.linked_sq_id;
                                     ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE; 
                                 }
                             } else if(hdr.saqr.pkt_type==PKT_TYPE_NEW_TASK) {
@@ -831,7 +897,23 @@ control LeafIngress(
                                 }
                             } 
                         }
+
+                        if (saqr_md.is_first_packet && !saqr_md.is_last_packet) {
+                            saqr_md.is_connection_table_occupied = (bool)try_occupy.execute(saqr_md.connection_key);                    
+                        } else if (!saqr_md.is_first_packet && saqr_md.is_last_packet && saqr_md.is_task_continuation) {
+                            release.execute(saqr_md.connection_key);
+                        }
+                    
+                    
+                        if (saqr_md.is_first_packet && !saqr_md.is_last_packet && !saqr_md.is_connection_table_occupied) {
+                            update_connection_destination.execute(saqr_md.connection_key);
+                        } else if (!saqr_md.is_first_packet) {
+                            saqr_md.candidate_dst_id = get_existing_destination_id.execute(saqr_md.connection_key);
+                        }
                     }
+
+                    hdr.saqr.dst_id = saqr_md.candidate_dst_id;
+
                     if (hdr.saqr.pkt_type != PKT_TYPE_WORKER_ID_ACK && hdr.saqr.pkt_type != PKT_TYPE_KEEP_ALIVE){
                         forward_saqr_switch_dst.apply(); // Forwarding tables...     
                     }
@@ -886,6 +968,9 @@ parser SaqrEgressParser(
         out eg_metadata_t eg_md,
         out egress_intrinsic_metadata_t eg_intr_md) {
     state start {
+        eg_md.egress_tstamp_clipped = 0;
+        eg_md.task_counter = 0;
+
         pkt.extract(eg_intr_md);
         pkt.extract(hdr.ethernet);
         pkt.extract(hdr.ipv4);
@@ -924,7 +1009,7 @@ control SaqrEgress(
     };
     Register<bit<32>, _>(65536) egress_tstamp; 
         RegisterAction<bit<32>, _, bit<32>>(egress_tstamp) write_egress_tstamp  = {
-            void apply(inout bit<32> value, out bit<32> rv) {
+            void apply(inout bit<32> value) {
                 value = eg_md.egress_tstamp_clipped;
             }
     };
