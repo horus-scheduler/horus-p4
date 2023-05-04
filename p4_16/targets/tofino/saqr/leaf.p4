@@ -661,7 +661,7 @@ control LeafIngress(
                                 }
                                 
                             } else if(hdr.horus.pkt_type == PKT_TYPE_NEW_TASK) {
-                                write_ingress_tstamp.execute(hdr.horus.seq_num);
+                                write_ingress_tstamp.execute(hdr.horus.task_id);
                                 if (horus_md.cluster_idle_count > 0) { // If a new task arrives and idle workers available read idle_list to get ID of idle worker
                                     horus_md.idle_ds_id = read_idle_list.execute(horus_md.idle_ds_index); 
                                 } else {
@@ -933,7 +933,7 @@ control HorusEgress(
         if (hdr.horus.pkt_type == PKT_TYPE_NEW_TASK) {
             eg_md.task_counter = inc_stat_count_task.execute(0);
             eg_md.egress_tstamp_clipped = (bit<32>)eg_intr_md_from_prsr.global_tstamp[31:0];
-            write_egress_tstamp.execute(hdr.horus.seq_num);
+            write_egress_tstamp.execute(hdr.horus.task_id);
         }
     }
 }
