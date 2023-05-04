@@ -42,7 +42,7 @@ control LeafIngress(
         /* 
          **** Register definitions ***
          * All of the registers have seperate boundaries for each vcluster. 
-         * We calculate the base/start index for the cluster_id and use the dedicated range for that cluster     
+         * We calculate the base/start index for the pool_id and use the dedicated range for that cluster     
         */ 
             /* idle_list: holds the ID of the idle nodes */
             Register<worker_id_t, _>(MAX_WORKERS_IN_RACK) idle_list;
@@ -340,10 +340,10 @@ control LeafIngress(
 
             /* 
              * Calculates the base/start index for the register arrays (qlen_list, deferred_qlen_list, etc.) 
-              based on the cluster_id of the coming packet.
+              based on the pool_id of the coming packet.
             */
             action get_worker_start_idx () {
-                horus_md.cluster_ds_start_idx = (bit <16>) (hdr.horus.cluster_id * MAX_WORKERS_PER_CLUSTER);
+                horus_md.cluster_ds_start_idx = (bit <16>) (hdr.horus.pool_id * MAX_WORKERS_PER_CLUSTER);
             }
 
             // Calculates the index of next idle worker in idle_list array. Base index + cluster_idle_count (pointer)
@@ -353,7 +353,7 @@ control LeafIngress(
 
             // Calculates the mirror dst id based on the actual dst_id and the emulated leaf index (TESTBEDONLY)
             action calc_mirror_dst_id() {
-                horus_md.mirror_dst_id = hdr.horus.dst_id + hdr.horus.cluster_id;
+                horus_md.mirror_dst_id = hdr.horus.dst_id + hdr.horus.pool_id;
             }
 
             // Since pointer points to *next available slot* in idle list. We decrement it when reading an idle node.
@@ -366,7 +366,7 @@ control LeafIngress(
             }
 
             /* 
-             * Gets the fixed point representation for (1/#workers) based on the cluster_id 
+             * Gets the fixed point representation for (1/#workers) based on the pool_id 
              * (how many workers belong to this cluster in this rack). 
              * Used for calculating average load.
             */ 
@@ -375,7 +375,7 @@ control LeafIngress(
             }
             table set_queue_len_unit {
                 key = {
-                    hdr.horus.cluster_id: exact;
+                    hdr.horus.pool_id: exact;
                 }
                 actions = {
                     act_set_queue_len_unit;
@@ -412,7 +412,7 @@ control LeafIngress(
                 key = {
                     hdr.horus.dst_id: exact;
                     // TESTBEDONLY: to diffrentiate ports of virtual leaves
-                    hdr.horus.cluster_id: exact;
+                    hdr.horus.pool_id: exact;
                 }
                 actions = {
                     act_forward_horus;
@@ -433,7 +433,7 @@ control LeafIngress(
             }
             table get_cluster_num_valid {
                 key = {
-                    hdr.horus.cluster_id : exact;
+                    hdr.horus.pool_id : exact;
                 }
                 actions = {
                     act_get_cluster_num_valid;
@@ -524,7 +524,7 @@ control LeafIngress(
 
             /* 
              * Maps the generated random number to the ID of the spine switch (for idle linkage). 
-             * Sine each vcluster might have different spines we use both random_id_1 and cluster_id as keys.
+             * Sine each vcluster might have different spines we use both random_id_1 and pool_id as keys.
               E.g spine 0 for vcluster X is the spine with ID 100. While spine 0 for vcluster Y is the spine with ID 200. 
             */
             action act_get_spine_dst_id(bit <16> spine_dst_id){
@@ -533,7 +533,7 @@ control LeafIngress(
             table get_spine_dst_id {
                 key = {
                     horus_md.random_id_1: exact;
-                    hdr.horus.cluster_id: exact;
+                    hdr.horus.pool_id: exact;
                 }
                 actions = {
                     act_get_spine_dst_id();
@@ -584,7 +584,7 @@ control LeafIngress(
                     if (ig_intr_md.resubmit_flag != 0) { // Special case: packet is resubmitted just update the indexes
                         @stage(0){
                             compare_correct_queue_len();
-                            inc_stat_count_resub.execute(hdr.horus.cluster_id);
+                            inc_stat_count_resub.execute(hdr.horus.pool_id);
                         }
                         @stage(1){
                             if (horus_md.min_correct_qlen == horus_md.task_resub_hdr.qlen_1) {
@@ -611,11 +611,11 @@ control LeafIngress(
                         set_queue_len_unit.apply(); // Get (1/#workers in this rack) for this cluster (used for avg. calculation)
                         
                         if (hdr.horus.pkt_type == PKT_TYPE_TASK_DONE_IDLE) {  // worker reply and its IDLE, read increment counter (pointer to idle list)
-                            horus_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.horus.cluster_id);
+                            horus_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.horus.pool_id);
                         } else if (hdr.horus.pkt_type == PKT_TYPE_NEW_TASK) { // new task arrives, read decrement counter (cluster_idle_count points to next available slot in list)
-                            horus_md.cluster_idle_count = read_and_dec_idle_count.execute(hdr.horus.cluster_id); // Read last idle count for vcluster
+                            horus_md.cluster_idle_count = read_and_dec_idle_count.execute(hdr.horus.pool_id); // Read last idle count for vcluster
                         } else if (hdr.horus.pkt_type == PKT_TYPE_TASK_DONE) { // worker reply but still not idle, we just read the pointer (we use this later to send updates about idle linkage)
-                            horus_md.cluster_idle_count = read_idle_count.execute(hdr.horus.cluster_id);
+                            horus_md.cluster_idle_count = read_idle_count.execute(hdr.horus.pool_id);
                         } else if (hdr.horus.pkt_type == PKT_TYPE_KEEP_ALIVE || hdr.horus.pkt_type == PKT_TYPE_WORKER_ID_ACK) {
                             send_pkt_to_cpu();
                         }
@@ -623,9 +623,9 @@ control LeafIngress(
                         // Lines below are not used in current experiments. 
                         // Useful for removing load linkage in case of failure or dynamic linkage
                         if (hdr.horus.pkt_type == PKT_TYPE_QUEUE_REMOVE) { 
-                            remove_linked_sq.execute(hdr.horus.cluster_id); 
+                            remove_linked_sq.execute(hdr.horus.pool_id); 
                         } else {
-                            horus_md.linked_sq_id = read_update_linked_sq.execute(hdr.horus.cluster_id); // Get ID of the Spine that the leaf reports to   
+                            horus_md.linked_sq_id = read_update_linked_sq.execute(hdr.horus.pool_id); // Get ID of the Spine that the leaf reports to   
                         }
 
                         
@@ -636,7 +636,7 @@ control LeafIngress(
                             get_cluster_num_valid.apply(); // Get number of workers in rack for this vcluster (used for adjusting random samples) 
                             gen_random_workers_16(); // Generate a 16 bit random number
                             if (hdr.horus.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.horus.pkt_type == PKT_TYPE_TASK_DONE || hdr.horus.pkt_type == PKT_TYPE_NEW_TASK) {
-                                horus_md.aggregate_queue_len = update_read_aggregate_queue_len.execute(hdr.horus.cluster_id);
+                                horus_md.aggregate_queue_len = update_read_aggregate_queue_len.execute(hdr.horus.pool_id);
                             } 
                             horus_md.ingress_tstamp_clipped = (bit<32>)ig_intr_md.ingress_mac_tstamp[31:0];
                         }
@@ -695,9 +695,9 @@ control LeafIngress(
                                  * Otherwise, it sets qlen to 0.
                                 */
                                 if (hdr.horus.qlen == 1) { // Spine thinks this rack is idle so update the idle linkage (leaf is still linked)
-                                    update_linked_iq.execute(hdr.horus.cluster_id);
+                                    update_linked_iq.execute(hdr.horus.pool_id);
                                 } else if (hdr.horus.qlen == 0 && horus_md.cluster_idle_count > 1) { // Spine thinks rack is not idle but there are idle workers so we reset idle link
-                                    reset_linked_iq.execute(hdr.horus.cluster_id);
+                                    reset_linked_iq.execute(hdr.horus.pool_id);
                                 }
                             } else if(hdr.horus.pkt_type == PKT_TYPE_TASK_DONE || hdr.horus.pkt_type == PKT_TYPE_TASK_DONE_IDLE) {
                                 write_queue_len_list_1.execute(hdr.horus.src_id); // Reply pkts contain the latest qlen of workers, so update the load lists
@@ -705,10 +705,10 @@ control LeafIngress(
                                 if (horus_md.cluster_idle_count > 1) { 
                                     // If there are idle workers available, leaf tries to initiate idle linkage:
                                     // Checks whether leaf is already linked with a spine, if not writes the new linkage (we send an idleAdd in next stage to this spine)
-                                    horus_md.idle_link = write_linked_iq.execute(hdr.horus.cluster_id);
+                                    horus_md.idle_link = write_linked_iq.execute(hdr.horus.pool_id);
                                 } else if (horus_md.cluster_idle_count <= 1) {
                                     // If the idle workers are not available, reset the linkage (read previous value so that we send idleRemove in next stage)
-                                    horus_md.idle_link = reset_linked_iq.execute(hdr.horus.cluster_id); 
+                                    horus_md.idle_link = reset_linked_iq.execute(hdr.horus.pool_id); 
                                 } 
                             }  
                         }
@@ -724,13 +724,13 @@ control LeafIngress(
                                         /* 
                                          * TESTBEDONLY: Here we should set the ID of the leaf switch as src_id, 
                                           but in our experimetns we used cluster_ids to diffrentiate the emulated leaf switches.
-                                          So we use the cluster_id when sending reply to spine. 
+                                          So we use the pool_id when sending reply to spine. 
                                           In real world it should be a constant SWITCH_ID. 
                                         */
                                         //hdr.horus.src_id = SWITCH_ID; 
-                                        hdr.horus.src_id = hdr.horus.cluster_id; 
+                                        hdr.horus.src_id = hdr.horus.pool_id; 
                                         hdr.horus.pkt_type = PKT_TYPE_IDLE_REMOVE;
-                                        inc_stat_count_idle_signal.execute(hdr.horus.cluster_id);
+                                        inc_stat_count_idle_signal.execute(hdr.horus.pool_id);
                                         ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE;
                                     }
                                 } else {
@@ -738,14 +738,14 @@ control LeafIngress(
                                         /* 
                                          * TESTBEDONLY: Here we should set the ID of the leaf switch as src_id, 
                                           but in our experimetns we used cluster_ids to diffrentiate the emulated leaf switches.
-                                          So we use the cluster_id when sending reply to spine. 
+                                          So we use the pool_id when sending reply to spine. 
                                           In real world it should be a constant SWITCH_ID. 
                                         */
                                         hdr.horus.dst_id = horus_md.spine_to_link_iq;
                                         //hdr.horus.src_id = SWITCH_ID; 
-                                        hdr.horus.src_id = hdr.horus.cluster_id; // Only for the virtual leaf in testbed experimetns TODO: Constant value switch id for the production
+                                        hdr.horus.src_id = hdr.horus.pool_id; // Only for the virtual leaf in testbed experimetns TODO: Constant value switch id for the production
                                         hdr.horus.pkt_type = PKT_TYPE_IDLE_SIGNAL; // Now change to idle signal to notify the selected spine
-                                        inc_stat_count_idle_signal.execute(hdr.horus.cluster_id);
+                                        inc_stat_count_idle_signal.execute(hdr.horus.pool_id);
                                         ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE;
                                     }
                                 }
@@ -768,7 +768,7 @@ control LeafIngress(
                                     hdr.horus.dst_id = horus_md.idle_ds_id;
                                 }
                             } else if (hdr.horus.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.horus.pkt_type == PKT_TYPE_TASK_DONE) {
-                                horus_md.spine_view_ok = inc_read_linked_view_drift.execute(hdr.horus.cluster_id); // Check if drift of load of the spine is larger than threshold
+                                horus_md.spine_view_ok = inc_read_linked_view_drift.execute(hdr.horus.pool_id); // Check if drift of load of the spine is larger than threshold
                             } 
                         }
 
@@ -801,13 +801,13 @@ control LeafIngress(
                                     /* 
                                      * TESTBEDONLY: Here we should set the ID of the leaf switch as src_id, 
                                       but in our experimetns we used cluster_ids to diffrentiate the emulated leaf switches.
-                                      So we use the cluster_id when sending reply to spine. 
+                                      So we use the pool_id when sending reply to spine. 
                                       In real world it should be a constant SWITCH_ID. 
                                     */
                                     //hdr.horus.src_id = SWITCH_ID; 
-                                    hdr.horus.src_id = hdr.horus.cluster_id; 
+                                    hdr.horus.src_id = hdr.horus.pool_id; 
                                     hdr.horus.qlen = horus_md.aggregate_queue_len;
-                                    inc_stat_count_load_signal.execute(hdr.horus.cluster_id);
+                                    inc_stat_count_load_signal.execute(hdr.horus.pool_id);
                                     hdr.horus.dst_id = horus_md.linked_sq_id;
                                     ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE; 
                                 }

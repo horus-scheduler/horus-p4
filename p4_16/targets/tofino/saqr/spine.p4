@@ -33,7 +33,7 @@ control SpineIngress(
     Random<bit<1>>() random_helper_1bit;
 
     /********  Register decelarations *********/
-    Register<leaf_id_t, _>(MAX_LEAFS) idle_list; // Maintains the list of idle leafs for each vcluster (array divided based on cluster_id)
+    Register<leaf_id_t, _>(MAX_LEAFS) idle_list; // Maintains the list of idle leafs for each vcluster (array divided based on pool_id)
         RegisterAction<bit<16>, _, bit<16>>(idle_list) add_to_idle_list = {
             void apply(inout bit<16> value, out bit<16> rv) {
                 value = hdr.horus.src_id;
@@ -217,7 +217,7 @@ control SpineIngress(
     }
 
     action get_leaf_start_idx () {
-        horus_md.cluster_ds_start_idx = (bit <16>) (hdr.horus.cluster_id * MAX_LEAFS_PER_CLUSTER);
+        horus_md.cluster_ds_start_idx = (bit <16>) (hdr.horus.pool_id * MAX_LEAFS_PER_CLUSTER);
     }
     action get_array_indices () {
         horus_md.idle_ds_index = horus_md.cluster_ds_start_idx + horus_md.cluster_idle_count;
@@ -297,11 +297,11 @@ control SpineIngress(
         ig_intr_tm_md.ucast_egress_port = port;
         /* 
          * TESTBEDONLY: The line below is only useful for our testbed experiments: 
-         * We use cluster_id to isolate the *leaf* switches. 
-         * Therefore, we set different cluster_id for each leaf on the outgoing packets from spine to the leaf. 
-         * The destination leaf, will have a dedicated register space based on the cluster_id and will work as a seperate leaf scheduler.
+         * We use pool_id to isolate the *leaf* switches. 
+         * Therefore, we set different pool_id for each leaf on the outgoing packets from spine to the leaf. 
+         * The destination leaf, will have a dedicated register space based on the pool_id and will work as a seperate leaf scheduler.
         */
-        hdr.horus.cluster_id = hdr.horus.dst_id; // We use different cluster ids for each virtual leaf switch 
+        hdr.horus.pool_id = hdr.horus.dst_id; // We use different cluster ids for each virtual leaf switch 
     }
     table forward_horus_switch_dst {
         key = {
@@ -320,7 +320,7 @@ control SpineIngress(
     }
     table get_cluster_num_valid_leafs { // TODO: fix typo: Leaves !
         key = {
-            hdr.horus.cluster_id : exact;
+            hdr.horus.pool_id : exact;
         }
         actions = {
             act_get_cluster_num_valid_leafs;
@@ -369,7 +369,7 @@ control SpineIngress(
     }
     table set_queue_len_unit_1 {
         key = {
-            hdr.horus.cluster_id: exact;
+            hdr.horus.pool_id: exact;
             horus_md.random_id_1: exact;
         }
         actions = {
@@ -385,7 +385,7 @@ control SpineIngress(
     }
     table set_queue_len_unit_2 {
         key = {
-            hdr.horus.cluster_id: exact;
+            hdr.horus.pool_id: exact;
             horus_md.random_id_2: exact;
         }
         actions = {
@@ -401,7 +401,7 @@ control SpineIngress(
     }
     table get_switch_index {
         key = {
-            hdr.horus.cluster_id: exact;
+            hdr.horus.pool_id: exact;
             hdr.horus.src_id: exact;
         }
         actions = {
@@ -418,7 +418,7 @@ control SpineIngress(
     table get_rand_leaf_id_2 {
         key = {
             horus_md.random_ds_index_2: exact;
-            hdr.horus.cluster_id: exact;
+            hdr.horus.pool_id: exact;
         }
         actions = {
             act_get_rand_leaf_id_2();
@@ -434,7 +434,7 @@ control SpineIngress(
     table get_rand_leaf_id_1 {
         key = {
             horus_md.random_ds_index_1: exact;
-            hdr.horus.cluster_id: exact;
+            hdr.horus.pool_id: exact;
         }
         actions = {
             act_get_rand_leaf_id_1();
@@ -450,10 +450,10 @@ control SpineIngress(
         if (hdr.horus.dst_id == SWITCH_ID) { // If this packet is destined for this spine do horus processing ot. its just an intransit packet we need to forward on correct port
             /* 
              * TESTBEDONLY: The line below is only useful for our testbed experiments: 
-             * We use cluster_id to isolate the *leaf* switches. However from spine prespective, all leaves belong to the same vcluster. 
-             * Therefore, we set cluster_id to 0 for every packet received by spine but we set different cluster_id for each leaf on the outgoing packets from spine to the leaf. 
+             * We use pool_id to isolate the *leaf* switches. However from spine prespective, all leaves belong to the same vcluster. 
+             * Therefore, we set pool_id to 0 for every packet received by spine but we set different pool_id for each leaf on the outgoing packets from spine to the leaf. 
             */
-            hdr.horus.cluster_id = 0;
+            hdr.horus.pool_id = 0;
             gen_random_leaf_index_16();
 
             @stage(1) {
@@ -462,18 +462,18 @@ control SpineIngress(
                 get_cluster_num_valid_leafs.apply();
                 if (ig_intr_md.resubmit_flag != 0) {
                     compare_correct_queue_len();
-                    inc_stat_count_resub.execute(hdr.horus.cluster_id);
+                    inc_stat_count_resub.execute(hdr.horus.pool_id);
                 } 
                 if (hdr.horus.pkt_type == PKT_TYPE_IDLE_SIGNAL || ((hdr.horus.pkt_type == PKT_TYPE_IDLE_REMOVE) && (horus_md.task_resub_hdr.ds_index_1 == INVALID_VALUE_16bit))) {
-                    horus_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.horus.cluster_id); // If it was IDLE_REMOVE and we are in second path and ds_index_1 is INVALID it means that another remove is in progress, roll back removal (increment pointer)
+                    horus_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.horus.pool_id); // If it was IDLE_REMOVE and we are in second path and ds_index_1 is INVALID it means that another remove is in progress, roll back removal (increment pointer)
                 } else if (hdr.horus.pkt_type == PKT_TYPE_IDLE_REMOVE && ig_intr_md.resubmit_flag == 0) { // Only decrement idle count (pointer to idle_list) in first pass of removal
-                    horus_md.cluster_idle_count = read_and_dec_idle_count.execute(hdr.horus.cluster_id);
+                    horus_md.cluster_idle_count = read_and_dec_idle_count.execute(hdr.horus.pool_id);
                 } else {
                     
                     if (hdr.horus.pkt_type == PKT_TYPE_QUEUE_SIGNAL){
                         get_switch_index.apply(); // Get index of the switch in the qlen list
                     }
-                    horus_md.cluster_idle_count = read_idle_count.execute(hdr.horus.cluster_id); // Get num_idle leafs (pointer to top of stack)
+                    horus_md.cluster_idle_count = read_idle_count.execute(hdr.horus.pool_id); // Get num_idle leafs (pointer to top of stack)
                 }   
             }
 
@@ -535,7 +535,7 @@ control SpineIngress(
                         horus_md.idle_ds_id = read_idle_list.execute(horus_md.idle_ds_index);
                         if (horus_md.t1_random_ds_index_1 == horus_md.cluster_num_valid_queue_signals) {  // generated index was out-of-range
                         if(horus_md.t2_random_ds_index_1 == horus_md.cluster_num_valid_queue_signals) {
-                            horus_md.random_ds_index_1 = inc_rr_counter.execute(hdr.horus.cluster_id);   // Both tries out-of-range, use RR index sample instead of random
+                            horus_md.random_ds_index_1 = inc_rr_counter.execute(hdr.horus.pool_id);   // Both tries out-of-range, use RR index sample instead of random
                         } else {
                             /* 
                              * Note: Had compilation error without this @in_hash pragma (compiler error not clear), most probably related to PHV allocation based on MAU group:
