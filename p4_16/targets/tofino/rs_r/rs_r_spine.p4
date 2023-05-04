@@ -10,8 +10,8 @@
 #define SWITCH_ID 16w100 
 
 control SpineIngress(
-        inout saqr_header_t hdr,
-        inout saqr_metadata_t saqr_md,
+        inout horus_header_t hdr,
+        inout horus_metadata_t horus_md,
         in ingress_intrinsic_metadata_t ig_intr_md,
         in ingress_intrinsic_metadata_from_parser_t ig_intr_prsr_md,
         inout ingress_intrinsic_metadata_for_deparser_t ig_intr_dprsr_md,
@@ -25,39 +25,39 @@ control SpineIngress(
     }
 
     action get_leaf_start_idx () {
-        saqr_md.cluster_ds_start_idx = (bit <16>) (hdr.saqr.cluster_id * MAX_LEAFS_PER_CLUSTER);
+        horus_md.cluster_ds_start_idx = (bit <16>) (hdr.horus.cluster_id * MAX_LEAFS_PER_CLUSTER);
     }
     
 
     //////// 
     action gen_random_leaf_index_16() {
-        saqr_md.random_ds_index_1 = (bit<16>) random_ds_id.get();
-        saqr_md.random_ds_index_2 = (bit<16>) random_ds_id.get();
+        horus_md.random_ds_index_1 = (bit<16>) random_ds_id.get();
+        horus_md.random_ds_index_2 = (bit<16>) random_ds_id.get();
 
     }
     action adjust_random_leaf_index_8() {
-        saqr_md.random_ds_index_1 = saqr_md.random_ds_index_1 >> 8;
-        saqr_md.random_ds_index_2 = saqr_md.random_ds_index_2 >> 8;
+        horus_md.random_ds_index_1 = horus_md.random_ds_index_1 >> 8;
+        horus_md.random_ds_index_2 = horus_md.random_ds_index_2 >> 8;
     }
 
     action adjust_random_leaf_index_4() {
-        saqr_md.random_ds_index_1 = saqr_md.random_ds_index_1 >> 12;
-        saqr_md.random_ds_index_2 = saqr_md.random_ds_index_2 >> 12;
+        horus_md.random_ds_index_1 = horus_md.random_ds_index_1 >> 12;
+        horus_md.random_ds_index_2 = horus_md.random_ds_index_2 >> 12;
     }
 
     action adjust_random_leaf_index_2() {
-        saqr_md.random_ds_index_1 = saqr_md.random_ds_index_1 >> 14;
-        saqr_md.random_ds_index_2 = saqr_md.random_ds_index_2 >> 14;
+        horus_md.random_ds_index_1 = horus_md.random_ds_index_1 >> 14;
+        horus_md.random_ds_index_2 = horus_md.random_ds_index_2 >> 14;
     }
 
     action adjust_random_leaf_index_1() {
-        saqr_md.random_ds_index_1 = saqr_md.random_ds_index_1 >> 15;
-        saqr_md.random_ds_index_2 = saqr_md.random_ds_index_2 >> 15;
+        horus_md.random_ds_index_1 = horus_md.random_ds_index_1 >> 15;
+        horus_md.random_ds_index_2 = horus_md.random_ds_index_2 >> 15;
     }
 
     table adjust_random_range_sq_leafs { // Adjust the random generated number (16 bit) based on number of available queue len signals
         key = {
-            saqr_md.cluster_num_valid_queue_signals: exact; 
+            horus_md.cluster_num_valid_queue_signals: exact; 
         }
         actions = {
             adjust_random_leaf_index_8(); // == 8
@@ -70,18 +70,18 @@ control SpineIngress(
         default_action = NoAction;
     }
     
-    action act_forward_saqr(PortId_t port) {
+    action act_forward_horus(PortId_t port) {
         ig_intr_tm_md.ucast_egress_port = port;
         // TESTBEDONLY: comment the line below when no need for emulating multiple leaf schedulers using one switch. 
-        // See Saqr spine comments for details.
-        hdr.saqr.cluster_id = hdr.saqr.dst_id; // We use different cluster ids for each virtual leaf switch 
+        // See Horus spine comments for details.
+        hdr.horus.cluster_id = hdr.horus.dst_id; // We use different cluster ids for each virtual leaf switch 
     }
-    table forward_saqr_switch_dst {
+    table forward_horus_switch_dst {
         key = {
-            hdr.saqr.dst_id: exact;
+            hdr.horus.dst_id: exact;
         }
         actions = {
-            act_forward_saqr;
+            act_forward_horus;
             NoAction;
         }
         size = HDR_SRC_ID_SIZE;
@@ -89,11 +89,11 @@ control SpineIngress(
     }
     
     action act_get_cluster_num_valid_leafs(bit<16> num_leafs) {
-        saqr_md.cluster_num_valid_queue_signals = num_leafs;
+        horus_md.cluster_num_valid_queue_signals = num_leafs;
     }
     table get_cluster_num_valid_leafs { // TODO: fix typo: Leaves !
         key = {
-            hdr.saqr.cluster_id : exact;
+            hdr.horus.cluster_id : exact;
         }
         actions = {
             act_get_cluster_num_valid_leafs;
@@ -105,12 +105,12 @@ control SpineIngress(
     
     
     action act_get_rand_leaf_id_1(bit <16> leaf_id){
-        saqr_md.random_id_1 = leaf_id;
+        horus_md.random_id_1 = leaf_id;
     }
     table get_rand_leaf_id_1 {
         key = {
-            saqr_md.random_ds_index_1: exact;
-            hdr.saqr.cluster_id: exact;
+            horus_md.random_ds_index_1: exact;
+            hdr.horus.cluster_id: exact;
         }
         actions = {
             act_get_rand_leaf_id_1();
@@ -122,11 +122,11 @@ control SpineIngress(
     
     /********  Control block logic *********/
     apply {
-        if (hdr.saqr.isValid()) {  // Saqr packet
+        if (hdr.horus.isValid()) {  // Horus packet
            
-        if (hdr.saqr.dst_id == SWITCH_ID && hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) { // If this packet is destined for this spine do saqr processing ot. its just an intransit packet we need to forward on correct port
-            // TESTBEDONLY: See saqr spine comments. comment the line below when no need for emulating multiple leaf schedulers.
-            hdr.saqr.cluster_id = 0;
+        if (hdr.horus.dst_id == SWITCH_ID && hdr.horus.pkt_type == PKT_TYPE_NEW_TASK) { // If this packet is destined for this spine do horus processing ot. its just an intransit packet we need to forward on correct port
+            // TESTBEDONLY: See horus spine comments. comment the line below when no need for emulating multiple leaf schedulers.
+            hdr.horus.cluster_id = 0;
             @stage(1) {
                 get_leaf_start_idx ();
                 get_cluster_num_valid_leafs.apply();
@@ -142,13 +142,13 @@ control SpineIngress(
             }
 
             @stage(4) {
-                hdr.saqr.dst_id = saqr_md.random_id_1;
+                hdr.horus.dst_id = horus_md.random_id_1;
 
             }
             
         }
-        hdr.saqr.src_id = SWITCH_ID;
-        forward_saqr_switch_dst.apply();
+        hdr.horus.src_id = SWITCH_ID;
+        forward_horus_switch_dst.apply();
             
         } else if (hdr.ipv4.isValid()) { // Regular switching procedure
             // TODO: Not ported the ip matching tables for now
@@ -161,8 +161,8 @@ control SpineIngress(
 
 control SpineIngressDeparser(
         packet_out pkt,
-        inout saqr_header_t hdr,
-        in saqr_metadata_t saqr_md,
+        inout horus_header_t hdr,
+        in horus_metadata_t horus_md,
         in ingress_intrinsic_metadata_for_deparser_t ig_intr_dprsr_md) {
          
     Mirror() mirror;
@@ -170,22 +170,22 @@ control SpineIngressDeparser(
 
     apply {
         if (ig_intr_dprsr_md.mirror_type == MIRROR_TYPE_NEW_TASK) {
-            mirror.emit<empty_t>((MirrorId_t) saqr_md.mirror_dst_id, {}); 
+            mirror.emit<empty_t>((MirrorId_t) horus_md.mirror_dst_id, {}); 
         }  
         if (ig_intr_dprsr_md.resubmit_type == RESUBMIT_TYPE_NEW_TASK) {
-            resubmit.emit(saqr_md.task_resub_hdr);
+            resubmit.emit(horus_md.task_resub_hdr);
         } 
         pkt.emit(hdr.ethernet);
         pkt.emit(hdr.ipv4);
         pkt.emit(hdr.udp);
-        pkt.emit(hdr.saqr);
+        pkt.emit(hdr.horus);
     }
 }
 
 // Empty egress parser/control blocks
 parser SpineEgressParser(
         packet_in pkt,
-        out saqr_header_t hdr,
+        out horus_header_t hdr,
         out eg_metadata_t eg_md,
         out egress_intrinsic_metadata_t eg_intr_md) {
     state start {
@@ -196,14 +196,14 @@ parser SpineEgressParser(
 
 control SpineEgressDeparser(
         packet_out pkt,
-        inout saqr_header_t hdr,
+        inout horus_header_t hdr,
         in eg_metadata_t eg_md,
         in egress_intrinsic_metadata_for_deparser_t ig_intr_dprs_md) {
     apply {}
 }
 
 control SpineEgress(
-        inout saqr_header_t hdr,
+        inout horus_header_t hdr,
         inout eg_metadata_t eg_md,
         in egress_intrinsic_metadata_t eg_intr_md,
         in egress_intrinsic_metadata_from_parser_t eg_intr_md_from_prsr,

@@ -2,7 +2,7 @@
 #include "rs_h_leaf.p4"
 #include "rs_h_spine.p4"
 
-Pipeline(SaqrIngressParser(),
+Pipeline(HorusIngressParser(),
          LeafIngress(),
          LeafIngressDeparser(),
          LeafEgressParser(),

@@ -2,12 +2,12 @@
 #include "leaf.p4"
 #include "spine.p4"
 
-Pipeline(SaqrIngressParser(),
+Pipeline(HorusIngressParser(),
          LeafIngress(),
          LeafIngressDeparser(),
-         SaqrEgressParser(),
-         SaqrEgress(),
-         SaqrEgressDeparser()
+         HorusEgressParser(),
+         HorusEgress(),
+         HorusEgressDeparser()
          ) pipe_leaf;
 
  Pipeline(SpineIngressParser(),

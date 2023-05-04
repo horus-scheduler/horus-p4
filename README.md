@@ -1,17 +1,17 @@
 
-# saqr-p4
-This repo contains the P4 switch implementation for **Saqr: Distributed In-network Task Scheduler for Datacenters**.
+# horus-p4
+This repo contains the P4 switch implementation for **Horus: Distributed In-network Task Scheduler for Datacenters**.
 
 ## Repository Structure
 
 p4_16/targets/[tofino](https://github.com/parhamyassini/saqr-p4/tree/master/p4_16/targets/tofino) Contains the P4-16 programs written for TNA architecture. 
 There are three main programs in this repository. The headers and parsers are common between these programs. Each program contains leaf and spine logic and runs each on one of the hardware pipelines and a controller which configures the tables.  
-1. Saqr
-Under the directory "saqr". Contains the Saqr implementation for TNA architecture. It also contains some legacy codes and python testcases. 
+1. Horus
+Under the directory "saqr". Contains the Horus implementation for TNA architecture. It also contains some legacy codes and python testcases. 
 >Note that the python testcases in saqr directory where initially used to confirm the expected behaviour; but we have modified the code ever since (as we ran experiments on the hardware switch). Therefore, the testcases might need some modificaions.
  
 2. **R**acksched-**R**andom **(RS-R)**
- Contains the implementation of [RackSched](https://github.com/netx-repo/RackSched) in P4-16 for leaf switches. We only added the necessary codes to support multiple virtual clusters and support large number of nodes (instead of 8 workers in the original implementation). We also use virtual cluster feature to emulate multiple leaf switches in our testbed topology (similar to what we did for Saqr, as explained in next section). 
+ Contains the implementation of [RackSched](https://github.com/netx-repo/RackSched) in P4-16 for leaf switches. We only added the necessary codes to support multiple virtual clusters and support large number of nodes (instead of 8 workers in the original implementation). We also use virtual cluster feature to emulate multiple leaf switches in our testbed topology (similar to what we did for Horus, as explained in next section). 
 The spine switch randomly selects one of the racks for a task.
 
 3. **R**acksched-**H**ierarchical **(RS-H)**
@@ -31,8 +31,8 @@ The figure below shows the exact connections between switch ports and machines i
 ![Switch Setup](./figs/switch_connection_setup.png)
 
 ### Emulating multiple leaves in P4 Program
-The current implementation uses the Virtual Cluster (VC) feature to emulate different leafs. The spine program assigns the ```hdr.falcon.cluster_id``` based on the selected leaf (this is done when selecting output port). Therfore, each leaf will only have access to the workers in that cluster. 
- The leaf programs first checks the ```hdr.falcon.cluster_id```, and based on that each leaf has access to an isolated part of the register arrays. In Saqr, each VC has the following registers:   linkage register, Load list register arrays (including the load and drift arrays), idle counter register (used as pointer to the idle list) and idle list register array. 
+The current implementation uses the Virtual Cluster (VC) feature to emulate different leafs. The spine program assigns the ```hdr.horus.cluster_id``` based on the selected leaf (this is done when selecting output port). Therfore, each leaf will only have access to the workers in that cluster. 
+ The leaf programs first checks the ```hdr.horus.cluster_id```, and based on that each leaf has access to an isolated part of the register arrays. In Horus, each VC has the following registers:   linkage register, Load list register arrays (including the load and drift arrays), idle counter register (used as pointer to the idle list) and idle list register array. 
 The controller is responsible for managing this virtualization as it configures the intial setup for the placement of workers. The current controller codes provide two setup configs used in our experiments: Skewed and Uniform.
 The physical connections between machines and switch do not need to be changed for the two mentioned setps.
 > Important note: The parts of the codes that are only used for *our testbed experiments* are marked in comments with tag: "TESTBEDONLY". These lines do not need to be there if we are not going to emulate multiple leaves. The instructions are given in comments for what should be changed the case that each leaf runs on an actuall switch.
@@ -41,20 +41,24 @@ The physical connections between machines and switch do not need to be changed f
 There are some important configs that should be done both in controller and in the [worker machines](https://github.com/parhamyassini/saqr-app-eval) (shinjuku configs) to change the setups.
 We summerize these in here:
 
-XXX Ask Hashmi to provide a summary of what needs to be changed in controller and shinjuku configs for a new worker placement setup. 
-
 ## Building and Running the Codes
 
-#### SSH to the switch 
+#### SSH to the tofino switch  
 ```
-ssh p4@142.58.2.222
+ssh <user>@<address>
 ```
-> Note: Switch can be accessed from any machine from *witihn* the SFU network. 
 
 #### Clone the repository.
 
+
+#### Link Common Barefoot Libraries
+If you are building artifacts for the first time, you should make a soft link from the `common` file to the common libraries of bf-sde. For create the linkage 
+```
+ln -s $SDE_INSTALL/pkgsrc/p4-examples/p4_16_programs/common/ p4_16/targets/tofino/common
+``` 
+
 #### Build the P4 Programs.
-Each program should be built sepratly. The main P4 file for each program contains leaf and spine logics no need to build leaf/spine seperatly. Example: main file for Saqr is "saqr.p4" which includes the the headers, parser, leaf, and spine implementation.
+Each program should be built seprately. The main P4 file for each program contains leaf and spine logics no need to build leaf/spine seperatly. Example: main file for Horus is "horus.p4" which includes the the headers, parser, leaf, and spine implementation.
 
 To build the program we use this script:
 ```
@@ -137,7 +141,7 @@ Documentation on setting up workers and clients are provided in [this repo](http
 ### Collecting overhead results
 For RackSched-Hierarchical (RS-H), for each reply packet from worker, leaf sends an update message to spine. Also, there are no resubmissions.
 
-For Saqr, the controller prints out the leaf resubmissions in total we use that to calculate the the percentage of tasks resubmitted. It also, prints out the the total number of state update messages (load and idle linkage msgs). In addition, we report the total number of resubmissions at spine switch which includes idle remove procedure (used for calculating total processing overheads).
+For Horus, the controller prints out the leaf resubmissions in total we use that to calculate the the percentage of tasks resubmitted. It also, prints out the the total number of state update messages (load and idle linkage msgs). In addition, we report the total number of resubmissions at spine switch which includes idle remove procedure (used for calculating total processing overheads).
 
 ## Known issues
  XXX
