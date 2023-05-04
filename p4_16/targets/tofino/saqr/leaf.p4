@@ -381,7 +381,7 @@ control LeafIngress(
                     act_set_queue_len_unit;
                     NoAction;
                 }
-                    size = HDR_CLUSTER_ID_SIZE;
+                    size = HDR_POOL_ID_SIZE;
                     default_action = NoAction;
             }
 
@@ -439,7 +439,7 @@ control LeafIngress(
                     act_get_cluster_num_valid;
                     NoAction;
                 }
-                size = HDR_CLUSTER_ID_SIZE;
+                size = HDR_POOL_ID_SIZE;
                 default_action = NoAction;
             }
 

@@ -326,7 +326,7 @@ control SpineIngress(
             act_get_cluster_num_valid_leafs;
             NoAction;
         }
-        size = HDR_CLUSTER_ID_SIZE;
+        size = HDR_POOL_ID_SIZE;
         default_action = NoAction;
     }
     
@@ -376,7 +376,7 @@ control SpineIngress(
             act_set_queue_len_unit_1;
             NoAction;
         }
-        size = HDR_CLUSTER_ID_SIZE;
+        size = HDR_POOL_ID_SIZE;
         default_action = NoAction;
     }
 
@@ -392,7 +392,7 @@ control SpineIngress(
             act_set_queue_len_unit_2;
             NoAction;
         }
-        size = HDR_CLUSTER_ID_SIZE;
+        size = HDR_POOL_ID_SIZE;
         default_action = NoAction;
     }
     
@@ -408,7 +408,7 @@ control SpineIngress(
             act_get_switch_index;
             NoAction;
         }
-            size = HDR_CLUSTER_ID_SIZE;
+            size = HDR_POOL_ID_SIZE;
             default_action = NoAction;
     }
 
