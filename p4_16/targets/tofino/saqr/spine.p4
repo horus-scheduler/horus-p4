@@ -479,10 +479,7 @@ control SpineIngress(
 
     action generate_connection_key() {
         saqr_md.request_key_hash = request_key_hasher.get(
-            {   hdr.ipv4.src_addr,
-                hdr.udp.src_port,
-                hdr.saqr.cluster_id,
-                hdr.saqr.src_id,
+            {   hdr.saqr.cluster_id,
                 hdr.saqr.seq_num
             }
         );
