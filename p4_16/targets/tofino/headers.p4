@@ -23,6 +23,7 @@
 #define PKT_TYPE_WORKER_ID_ACK 13
 #define PKT_TYPE_REMOVE_ACK 14
 #define PKT_TYPE_QUEUE_SIGNAL_INIT 15
+#define PKT_TYPE_TASK_CONTINUATION 16
 
 #define PORT_PCI_CPU 192
 
@@ -79,6 +80,8 @@ header saqr_h {
     bit<16> dst_id;
     bit<HDR_QUEUE_LEN_SIZE> qlen;   // Also used for reporting length of idle list (from spine sw to leaf sw) and indicating the decision type for a scheduled task (Idle selection or not)
     bit<HDR_SEQ_NUM_SIZE> seq_num;   
+    bit<1> is_last_packet;
+    bit<7> reserved;
 }
 
 struct saqr_header_t {
@@ -103,6 +106,17 @@ struct eg_metadata_t {
     bit<32> egress_tstamp_clipped;
     bit<32> task_counter;
 }
+
+#define MAX_NUMBER_OF_PERSISTANT_REQUESTS 256
+#define LOG_2_MAX_NUMBER_OF_PERSISTANT_REQUESTS 8
+
+#define CRC_HASH_SIZE 16
+
+typedef bit<CRC_HASH_SIZE> request_key_hash_t;
+typedef bit<LOG_2_MAX_NUMBER_OF_PERSISTANT_REQUESTS> connection_key_t;
+
+typedef bit<1> saqr_request_table_record_is_occupied;
+typedef bit<16> saqr_request_table_destination_id;
 
 struct saqr_metadata_t {
     bit<1> idle_remove_lock;
@@ -174,6 +188,16 @@ struct saqr_metadata_t {
     bit<QUEUE_LEN_FIXED_POINT_SIZE> qlen_unit_2;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> selected_ds_qlen_unit;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> not_selected_ds_qlen_unit;
+
+    bool is_first_packet;
+    bool is_task_continuation;
+    bool is_last_packet;
+
+    request_key_hash_t request_key_hash;
+    connection_key_t connection_key;
+    bool is_connection_table_occupied;
+
+    bit<16> candidate_dst_id;
 }
 
 
