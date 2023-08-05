@@ -36,6 +36,7 @@
 
 #define QUEUE_LEN_FIXED_POINT_SIZE 16
 
+
 #define MAX_VCLUSTERS 32
 #define MAX_WORKERS_PER_CLUSTER 16
 #define MAX_LEAFS_PER_CLUSTER 16
@@ -57,15 +58,8 @@
 #define RESUBMIT_TYPE_NEW_TASK 1
 #define RESUBMIT_TYPE_IDLE_REMOVE 2
 
-
 const bit<8> INVALID_VALUE_8bit = 8w0x7F;
 const bit<16> INVALID_VALUE_16bit = 16w0x7FFF;
-
-const bit<8> STATE_LINKED = 8w0x00;
-const bit<8> STATE_REM_SENT = 8w0x01;
-const bit<8> STATE_UNLINKED = 8w0x02;
-const bit<8> STATE_ADD_SENT = 8w0x03;
-
 
 typedef bit<HDR_QUEUE_LEN_SIZE> queue_len_t;
 typedef bit<9> port_id_t;
@@ -127,15 +121,10 @@ struct horus_metadata_t {
     bit<16> cluster_num_valid_ds;
     bit<16> cluster_num_valid_us;
     bit<16> cluster_num_valid_queue_signals;
-    bit<16> cluster_num_valid_queue_signals_copy;
     bit<16> random_id_1;
     bit<16> random_id_2;
     bit<16> random_ds_index_1;
     bit<16> random_ds_index_2;
-    bit<16> t1_random_ds_index_1;
-    bit<16> t1_random_ds_index_2;
-    bit<16> t2_random_ds_index_1;
-    bit<16> t2_random_ds_index_2;
     bit<16> child_switch_index;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_1;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> worker_qlen_2;
@@ -147,15 +136,9 @@ struct horus_metadata_t {
     bit<QUEUE_LEN_FIXED_POINT_SIZE> not_selected_correct_qlen;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> min_correct_qlen;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> selected_ds_qlen;
-    bit<16> selected_ds_index;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> not_selected_ds_qlen;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> queue_len_diff;
 
-    bit<16> index_idle_list;
-    bit<16> backoff_counter1;
-    bit<16> backoff_counter2;
-    bit<16> backoff_counter3;
-    bit<16> num_valid_half;
     bit<16> deferred_qlen_1;
     bit<16> cluster_absolute_leaf_index;
     bit<16> idle_ds_id;
@@ -174,7 +157,6 @@ struct horus_metadata_t {
     bit<16> idle_id_to_write;
     task_resub_hdr_t task_resub_hdr;
     bit<8> idle_len_8bit;
-    bit<8> curr_state;
     bit<16> spine_view_ok;
     bit<16> idle_rr_index;
     bit<16> selected_idle_index;
