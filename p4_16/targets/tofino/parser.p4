@@ -5,7 +5,7 @@
 #include "common/util.p4"
 #include "headers.p4"
 
-#define SAQR_PORT 1234
+#define HORUS_PORT 1234
 
 parser HorusIngressParser (
         packet_in pkt,
@@ -74,7 +74,7 @@ parser HorusIngressParser (
     state parse_udp {
         pkt.extract(hdr.udp);
         transition select (hdr.udp.dst_port) {
-            SAQR_PORT : parse_horus;
+            HORUS_PORT : parse_horus;
             default: accept;
         }
     }
@@ -153,7 +153,7 @@ parser SpineIngressParser (
     state parse_udp {
         pkt.extract(hdr.udp);
         transition select (hdr.udp.dst_port) {
-            SAQR_PORT : parse_horus;
+            HORUS_PORT : parse_horus;
             default: accept;
         }
     }
