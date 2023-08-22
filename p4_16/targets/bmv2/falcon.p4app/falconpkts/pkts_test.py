@@ -9,6 +9,6 @@ if __name__ == '__main__':
     _dst_ip = '10.0.2.101'
 
 
-    new_task_packet = make_falcon_task_pkt(dst_ip=_dst_ip, cluster_id=105, local_cluster_id=5, src_id=8, **eth_kwargs)
+    new_task_packet = make_falcon_task_pkt(dst_ip=_dst_ip, pool_id=105, local_cluster_id=5, src_id=8, **eth_kwargs)
     print('>> New Task packet (size = %d bytes):' % len(new_task_packet))
     new_task_packet.show()

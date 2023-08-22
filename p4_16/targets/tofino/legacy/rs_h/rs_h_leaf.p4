@@ -67,7 +67,7 @@ control LeafIngress(
             Random<bit<16>>() random_worker_id_16;
 
             action get_worker_start_idx () {
-                saqr_md.cluster_ds_start_idx = (bit <16>) (hdr.saqr.cluster_id * MAX_WORKERS_PER_CLUSTER);
+                saqr_md.cluster_ds_start_idx = (bit <16>) (hdr.saqr.pool_id * MAX_WORKERS_PER_CLUSTER);
             }
 
             action _drop() {
@@ -95,13 +95,13 @@ control LeafIngress(
             }
             table get_cluster_num_valid {
                 key = {
-                    hdr.saqr.cluster_id : exact;
+                    hdr.saqr.pool_id : exact;
                 }
                 actions = {
                     act_get_cluster_num_valid;
                     NoAction;
                 }
-                size = HDR_CLUSTER_ID_SIZE;
+                size = HDR_POOL_ID_SIZE;
                 default_action = NoAction;
             }
 
@@ -110,13 +110,13 @@ control LeafIngress(
             }
             table set_queue_len_unit {
                 key = {
-                    hdr.saqr.cluster_id: exact;
+                    hdr.saqr.pool_id: exact;
                 }
                 actions = {
                     act_set_queue_len_unit;
                     NoAction;
                 }
-                    size = HDR_CLUSTER_ID_SIZE;
+                    size = HDR_POOL_ID_SIZE;
                     default_action = NoAction;
             }
  
@@ -190,8 +190,8 @@ control LeafIngress(
                         get_cluster_num_valid.apply();
                         gen_random_workers_16();
                         if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE || hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
-                            saqr_md.aggregate_queue_len = update_read_aggregate_queue_len.execute(hdr.saqr.cluster_id);
-                            saqr_md.linked_sq_id = read_linked_sq.execute(hdr.saqr.cluster_id);
+                            saqr_md.aggregate_queue_len = update_read_aggregate_queue_len.execute(hdr.saqr.pool_id);
+                            saqr_md.linked_sq_id = read_linked_sq.execute(hdr.saqr.pool_id);
                         }
                     }
                     
@@ -237,7 +237,7 @@ control LeafIngress(
                             hdr.saqr.pkt_type = PKT_TYPE_QUEUE_SIGNAL;
                             // TESTBEDONLY: See comments in Saqr leaf. Uncomment below and comment the next line for real world.
                             //hdr.saqr.src_id = SWITCH_ID; 
-                            hdr.saqr.src_id = hdr.saqr.cluster_id; 
+                            hdr.saqr.src_id = hdr.saqr.pool_id; 
                             hdr.saqr.qlen = saqr_md.aggregate_queue_len;
                             hdr.saqr.dst_id = saqr_md.linked_sq_id;
                             ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE; 

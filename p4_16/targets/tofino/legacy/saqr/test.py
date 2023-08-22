@@ -34,7 +34,7 @@ eth_kwargs = {
         'src_mac': SAMPLE_ETH_SRC,
         'dst_mac': SAMPLE_ETH_DST
         }
-TEST_VCLUSTER_ID = 0
+TEST_VIRTUAL_POOL_ID = 0
 MAX_VCLUSTER_WORKERS = 32
 INVALID_VALUE_8bit = 0x7F
 INVALID_VALUE_16bit = 0x7FFF
@@ -202,37 +202,37 @@ class TesthorusLeaf(BfRuntimeTest):
         register_write(self.target,
                 self.register_linked_iq_sched,
                 register_name='LeafIngress.linked_iq_sched.f1',
-                index=TEST_VCLUSTER_ID,
+                index=TEST_VIRTUAL_POOL_ID,
                 register_value=initial_linked_iq_spine)
 
         register_write(self.target,
                 self.register_linked_sq_sched,
                 register_name='LeafIngress.linked_sq_sched.f1',
-                index=TEST_VCLUSTER_ID,
+                index=TEST_VIRTUAL_POOL_ID,
                 register_value=initial_linked_sq_spine)
 
         register_write(self.target,
             self.register_idle_count,
             register_name='LeafIngress.idle_count.f1',
-            index=TEST_VCLUSTER_ID,
+            index=TEST_VIRTUAL_POOL_ID,
             register_value=initial_idle_count)
         
         register_write(self.target,
                 self.register_aggregate_queue_len,
                 register_name='LeafIngress.aggregate_queue_len_list.f1',
-                index=TEST_VCLUSTER_ID,
+                index=TEST_VIRTUAL_POOL_ID,
                 register_value=initial_agg_qlen)
         
         register_write(self.target,
             self.register_spine_iq_len_1,
             register_name='LeafIngress.spine_iq_len_1.f1',
-            index=TEST_VCLUSTER_ID,
+            index=TEST_VIRTUAL_POOL_ID,
             register_value=INVALID_VALUE_8bit)
 
         register_write(self.target,
             self.register_spine_probed_id,
             register_name='LeafIngress.spine_probed_id.f1',
-            index=TEST_VCLUSTER_ID,
+            index=TEST_VIRTUAL_POOL_ID,
             register_value=INVALID_VALUE_16bit)
 
         # Insert idle_list values (wid of idle workers)
@@ -277,13 +277,13 @@ class TesthorusLeaf(BfRuntimeTest):
         # Insert qlen unit entries
         self.set_queue_len_unit.entry_add(
                 self.target,
-                [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VCLUSTER_ID)])],
+                [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID)])],
                 [self.set_queue_len_unit.make_data([client.DataTuple('cluster_unit', qlen_unit)],
                                              'LeafIngress.act_set_queue_len_unit')]
             )
         self.get_cluster_num_valid.entry_add(
                 self.target,
-                [self.get_cluster_num_valid.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VCLUSTER_ID)])],
+                [self.get_cluster_num_valid.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID)])],
                 [self.get_cluster_num_valid.make_data([client.DataTuple('num_ds_elements', num_valid_ds_elements), client.DataTuple('num_us_elements', num_valid_us_elements)],
                                              'LeafIngress.act_get_cluster_num_valid')]
             )
@@ -328,8 +328,8 @@ class TesthorusLeaf(BfRuntimeTest):
             dst_id = 100 # this will be identifier for client (receiving reply pkt)
             src_id = spine_port_mapping.keys()[0]
             ig_port = spine_port_mapping[src_id]
-            scan_queue_pkt = make_horus_scan_queue_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, task_id=0x10+i, **eth_kwargs)
-            expected_pkt = make_horus_queue_signal_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=src_id, task_id=0x10+i, is_init=True, **eth_kwargs)
+            scan_queue_pkt = make_horus_scan_queue_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=dst_id, task_id=0x10+i, **eth_kwargs)
+            expected_pkt = make_horus_queue_signal_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=src_id, task_id=0x10+i, is_init=True, **eth_kwargs)
             logger.info("Sending packet on port %d", ig_port)
             testutils.send_packet(self, ig_port, scan_queue_pkt)
             logger.info(" Verifying expected QUEUE_SIGNAL_INIT on port %d", ig_port)
@@ -341,10 +341,10 @@ class TesthorusLeaf(BfRuntimeTest):
                 self.register_linked_sq_sched,
                 'LeafIngress.linked_sq_sched.f1',
                 pipe_id,
-                TEST_VCLUSTER_ID, 
+                TEST_VIRTUAL_POOL_ID, 
                 src_id)
             for i in range(num_task_done):
-                task_done_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=4, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+                task_done_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=4, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
                 
                 logger.info("\n********* Sending TASK_DONE packet from a worker *********")
                 testutils.send_packet(self, ig_port, task_done_packet)
@@ -358,7 +358,7 @@ class TesthorusLeaf(BfRuntimeTest):
                     print(poll_res)
 
             logger.info("\n********* Sending QUEUE_REMOVE packet from the linked spine *********")
-            queue_remove_pkt = make_horus_queue_remove_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, task_id=0x10+i, **eth_kwargs)
+            queue_remove_pkt = make_horus_queue_remove_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=dst_id, task_id=0x10+i, **eth_kwargs)
             testutils.send_packet(self, ig_port, queue_remove_pkt)
             poll_res = testutils.dp_poll(self)
 
@@ -367,10 +367,10 @@ class TesthorusLeaf(BfRuntimeTest):
                 self.register_linked_sq_sched,
                 'LeafIngress.linked_sq_sched.f1',
                 pipe_id,
-                TEST_VCLUSTER_ID, 
+                TEST_VIRTUAL_POOL_ID, 
                 INVALID_VALUE_16bit)
             for i in range(4):
-                task_done_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=4, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+                task_done_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=4, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
                 
                 logger.info("\n********* After unlink: Sending TASK_DONE packet from worker  *********")
                 testutils.send_packet(self, ig_port, task_done_packet)
@@ -417,42 +417,42 @@ class TesthorusLeaf(BfRuntimeTest):
         register_write(self.target,
                 self.register_linked_iq_sched,
                 register_name='LeafIngress.linked_iq_sched.f1',
-                index=TEST_VCLUSTER_ID,
+                index=TEST_VIRTUAL_POOL_ID,
                 register_value=initial_linked_iq_spine)
 
         register_write(self.target,
                 self.register_linked_sq_sched,
                 register_name='LeafIngress.linked_sq_sched.f1',
-                index=TEST_VCLUSTER_ID,
+                index=TEST_VIRTUAL_POOL_ID,
                 register_value=initial_linked_sq_spine)
         
         register_write(self.target,
                 self.register_idle_link_spine_view,
                 register_name='LeafIngress.idle_link_spine_view.f1',
-                index=TEST_VCLUSTER_ID,
+                index=TEST_VIRTUAL_POOL_ID,
                 register_value=0)
         register_write(self.target,
             self.register_idle_count,
             register_name='LeafIngress.idle_count.f1',
-            index=TEST_VCLUSTER_ID,
+            index=TEST_VIRTUAL_POOL_ID,
             register_value=initial_idle_count)
         
         register_write(self.target,
                 self.register_aggregate_queue_len,
                 register_name='LeafIngress.aggregate_queue_len_list.f1',
-                index=TEST_VCLUSTER_ID,
+                index=TEST_VIRTUAL_POOL_ID,
                 register_value=initial_agg_qlen)
         
         # register_write(self.target,
         #     self.register_spine_iq_len_1,
         #     register_name='LeafIngress.spine_iq_len_1.f1',
-        #     index=TEST_VCLUSTER_ID,
+        #     index=TEST_VIRTUAL_POOL_ID,
         #     register_value=INVALID_VALUE_8bit)
 
         # register_write(self.target,
         #     self.register_spine_probed_id,
         #     register_name='LeafIngress.spine_probed_id.f1',
-        #     index=TEST_VCLUSTER_ID,
+        #     index=TEST_VIRTUAL_POOL_ID,
         #     register_value=INVALID_VALUE_16bit)
 
         # Simply verify the read from hw to check correct values were inserted
@@ -460,14 +460,14 @@ class TesthorusLeaf(BfRuntimeTest):
             self.register_idle_count,
             'LeafIngress.idle_count.f1',
             pipe_id,
-            TEST_VCLUSTER_ID,
+            TEST_VIRTUAL_POOL_ID,
             initial_idle_count)
 
         test_register_read(self.target,
             self.register_aggregate_queue_len,
             'LeafIngress.aggregate_queue_len_list.f1',
             pipe_id,
-            TEST_VCLUSTER_ID,
+            TEST_VIRTUAL_POOL_ID,
             initial_agg_qlen)
         
         # Insert idle_list values (wid of idle workers)
@@ -506,7 +506,7 @@ class TesthorusLeaf(BfRuntimeTest):
         for i, spine_id in enumerate(spine_port_ids):
             self.get_spine_dst_id.entry_add(
                 self.target,
-                    [self.get_spine_dst_id.make_key([client.KeyTuple('horus_md.random_id_1', i), client.KeyTuple('hdr.horus.pool_id', TEST_VCLUSTER_ID)])],
+                    [self.get_spine_dst_id.make_key([client.KeyTuple('horus_md.random_id_1', i), client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID)])],
                     [self.get_spine_dst_id.make_data([client.DataTuple('spine_dst_id', spine_id)],
                                                  'LeafIngress.act_get_spine_dst_id')]
                 )
@@ -514,13 +514,13 @@ class TesthorusLeaf(BfRuntimeTest):
         # Insert qlen unit entries
         self.set_queue_len_unit.entry_add(
                 self.target,
-                [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VCLUSTER_ID)])],
+                [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID)])],
                 [self.set_queue_len_unit.make_data([client.DataTuple('cluster_unit', qlen_unit)],
                                              'LeafIngress.act_set_queue_len_unit')]
             )
         self.get_cluster_num_valid.entry_add(
                 self.target,
-                [self.get_cluster_num_valid.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VCLUSTER_ID)])],
+                [self.get_cluster_num_valid.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID)])],
                 [self.get_cluster_num_valid.make_data([client.DataTuple('num_ds_elements', num_valid_ds_elements), client.DataTuple('num_us_elements', num_valid_us_elements)],
                                              'LeafIngress.act_get_cluster_num_valid')]
             )
@@ -564,9 +564,9 @@ class TesthorusLeaf(BfRuntimeTest):
         src_id = wid_port_mapping.keys()[i]
         ig_port = wid_port_mapping[src_id]
 
-        task_done_idle_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
-        #expected_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
-        #expected_packet_probe_idle = make_horus_probe_idle_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=1001, pkt_len=0, task_id=0x10+i, **eth_kwargs)            
+        task_done_idle_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=dst_id, is_idle=True, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+        #expected_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=dst_id, is_idle=True, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+        #expected_packet_probe_idle = make_horus_probe_idle_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=1001, pkt_len=0, task_id=0x10+i, **eth_kwargs)            
             
         logger.info("Sending done_idle packet on port %d", ig_port)
         testutils.send_packet(self, ig_port, task_done_idle_packet)
@@ -578,14 +578,14 @@ class TesthorusLeaf(BfRuntimeTest):
             self.register_linked_iq_sched,
             'LeafIngress.linked_iq_sched.f1',
             pipe_id,
-            TEST_VCLUSTER_ID)
+            TEST_VIRTUAL_POOL_ID)
         test_register_read(self.target,
             self.register_idle_count,
             'LeafIngress.idle_count.f1',
             pipe_id,
-            TEST_VCLUSTER_ID)
+            TEST_VIRTUAL_POOL_ID)
 
-        task_done_idle_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+        task_done_idle_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
         testutils.send_packet(self, ig_port, task_done_idle_packet)
         for i in range(2):
             poll_res = testutils.dp_poll(self)
@@ -595,14 +595,14 @@ class TesthorusLeaf(BfRuntimeTest):
             self.register_linked_iq_sched,
             'LeafIngress.linked_iq_sched.f1',
             pipe_id,
-            TEST_VCLUSTER_ID)
+            TEST_VIRTUAL_POOL_ID)
         test_register_read(self.target,
             self.register_idle_count,
             'LeafIngress.idle_count.f1',
             pipe_id,
-            TEST_VCLUSTER_ID)
+            TEST_VIRTUAL_POOL_ID)
 
-        task_done_idle_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+        task_done_idle_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
         testutils.send_packet(self, ig_port, task_done_idle_packet)
         for i in range(2):
             poll_res = testutils.dp_poll(self)
@@ -612,14 +612,14 @@ class TesthorusLeaf(BfRuntimeTest):
             self.register_linked_iq_sched,
             'LeafIngress.linked_iq_sched.f1',
             pipe_id,
-            TEST_VCLUSTER_ID)
+            TEST_VIRTUAL_POOL_ID)
         test_register_read(self.target,
             self.register_idle_count,
             'LeafIngress.idle_count.f1',
             pipe_id,
-            TEST_VCLUSTER_ID)
+            TEST_VIRTUAL_POOL_ID)
 
-        task_done_idle_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+        task_done_idle_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
         testutils.send_packet(self, ig_port, task_done_idle_packet)
         for i in range(2):
             poll_res = testutils.dp_poll(self)
@@ -629,14 +629,14 @@ class TesthorusLeaf(BfRuntimeTest):
             self.register_linked_iq_sched,
             'LeafIngress.linked_iq_sched.f1',
             pipe_id,
-            TEST_VCLUSTER_ID)
+            TEST_VIRTUAL_POOL_ID)
         test_register_read(self.target,
             self.register_idle_count,
             'LeafIngress.idle_count.f1',
             pipe_id,
-            TEST_VCLUSTER_ID)
+            TEST_VIRTUAL_POOL_ID)
 
-        new_task_packet = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=1001, dst_id=dst_id, q_len=0, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+        new_task_packet = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=1001, dst_id=dst_id, q_len=0, pkt_len=0, task_id=0x10+i, **eth_kwargs)
         testutils.send_packet(self, ig_port, new_task_packet)
         for i in range(2):
             poll_res = testutils.dp_poll(self)
@@ -646,14 +646,14 @@ class TesthorusLeaf(BfRuntimeTest):
             self.register_linked_iq_sched,
             'LeafIngress.linked_iq_sched.f1',
             pipe_id,
-            TEST_VCLUSTER_ID)
+            TEST_VIRTUAL_POOL_ID)
         test_register_read(self.target,
             self.register_idle_count,
             'LeafIngress.idle_count.f1',
             pipe_id,
-            TEST_VCLUSTER_ID)
+            TEST_VIRTUAL_POOL_ID)
 
-        task_done_idle_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+        task_done_idle_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
         testutils.send_packet(self, ig_port, task_done_idle_packet)
         for i in range(2):
             poll_res = testutils.dp_poll(self)
@@ -663,14 +663,14 @@ class TesthorusLeaf(BfRuntimeTest):
             self.register_linked_iq_sched,
             'LeafIngress.linked_iq_sched.f1',
             pipe_id,
-            TEST_VCLUSTER_ID)
+            TEST_VIRTUAL_POOL_ID)
         test_register_read(self.target,
             self.register_idle_count,
             'LeafIngress.idle_count.f1',
             pipe_id,
-            TEST_VCLUSTER_ID)
+            TEST_VIRTUAL_POOL_ID)
 
-        new_task_packet = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=1001, dst_id=dst_id, q_len=1, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+        new_task_packet = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=1001, dst_id=dst_id, q_len=1, pkt_len=0, task_id=0x10+i, **eth_kwargs)
         testutils.send_packet(self, ig_port, new_task_packet)
         for i in range(2):
             poll_res = testutils.dp_poll(self)
@@ -680,13 +680,13 @@ class TesthorusLeaf(BfRuntimeTest):
             self.register_linked_iq_sched,
             'LeafIngress.linked_iq_sched.f1',
             pipe_id,
-            TEST_VCLUSTER_ID)
+            TEST_VIRTUAL_POOL_ID)
         test_register_read(self.target,
             self.register_idle_count,
             'LeafIngress.idle_count.f1',
             pipe_id,
-            TEST_VCLUSTER_ID)
-        task_done_idle_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+            TEST_VIRTUAL_POOL_ID)
+        task_done_idle_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
         testutils.send_packet(self, ig_port, task_done_idle_packet)
         for i in range(2):
             poll_res = testutils.dp_poll(self)
@@ -696,12 +696,12 @@ class TesthorusLeaf(BfRuntimeTest):
             self.register_linked_iq_sched,
             'LeafIngress.linked_iq_sched.f1',
             pipe_id,
-            TEST_VCLUSTER_ID)
+            TEST_VIRTUAL_POOL_ID)
         test_register_read(self.target,
             self.register_idle_count,
             'LeafIngress.idle_count.f1',
             pipe_id,
-            TEST_VCLUSTER_ID)
+            TEST_VIRTUAL_POOL_ID)
         # #testutils.verify_packets(self, expected_packet_probe_idle, [12, 13])
         # #testutils.verify_any_packet_any_port(self, [expected_packet_probe_idle], [swports[12] , swports[13]])
         # logger.info("\n[Note] When first idle pkt is received, swith should send another pkt to spines to probe their IQ len, manually tested in Tofino modle logs\n")
@@ -716,11 +716,11 @@ class TesthorusLeaf(BfRuntimeTest):
             self.register_idle_count,
             'LeafIngress.idle_count.f1',
             pipe_id,
-            TEST_VCLUSTER_ID)
+            TEST_VIRTUAL_POOL_ID)
 
         # logger.info("\n*** Spine 1 sends idle response ***")
         #spine_src_1 = spine_port_mapping.keys()[0]
-        # probe_resp_1 = make_horus_probe_idle_response_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=spine_src_1, dst_id=dst_id, task_id=0x10+i, q_len=spine_idle_qlen[0], **eth_kwargs)
+        # probe_resp_1 = make_horus_probe_idle_response_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=spine_src_1, dst_id=dst_id, task_id=0x10+i, q_len=spine_idle_qlen[0], **eth_kwargs)
         # testutils.send_packet(self, ig_port, probe_resp_1)
         # logger.info("\n*** Leaf should send another probe to random spine ***")
         # poll_res = testutils.dp_poll(self)
@@ -731,18 +731,18 @@ class TesthorusLeaf(BfRuntimeTest):
         #     self.register_spine_probed_id,
         #     'LeafIngress.spine_probed_id.f1',
         #     pipe_id,
-        #     TEST_VCLUSTER_ID,
+        #     TEST_VIRTUAL_POOL_ID,
         #     spine_src_1)
         # test_register_read(self.target,
         #     self.register_spine_iq_len_1,
         #     'LeafIngress.spine_iq_len_1.f1',
         #     pipe_id,
-        #     TEST_VCLUSTER_ID,
+        #     TEST_VIRTUAL_POOL_ID,
         #     spine_idle_qlen[0])
 
         # logger.info("\n*** Spine 2 sends idle response ***")
         # spine_src_2 = spine_port_mapping.keys()[1]
-        # probe_resp_2 = make_horus_probe_idle_response_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=spine_src_2, dst_id=dst_id, task_id=0x10+i, q_len=spine_idle_qlen[1], **eth_kwargs)
+        # probe_resp_2 = make_horus_probe_idle_response_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=spine_src_2, dst_id=dst_id, task_id=0x10+i, q_len=spine_idle_qlen[1], **eth_kwargs)
         # testutils.send_packet(self, ig_port, probe_resp_2)
         # logger.info("\n*** Leaf should send an idle signal to selected spine (one with min idle queue length)***")
         # poll_res = testutils.dp_poll(self)
@@ -754,13 +754,13 @@ class TesthorusLeaf(BfRuntimeTest):
         #     self.register_spine_probed_id,
         #     'LeafIngress.spine_probed_id.f1',
         #     pipe_id,
-        #     TEST_VCLUSTER_ID, 
+        #     TEST_VIRTUAL_POOL_ID, 
         #     INVALID_VALUE_16bit)
         # test_register_read(self.target,
         #     self.register_spine_iq_len_1,
         #     'LeafIngress.spine_iq_len_1.f1',
         #     pipe_id,
-        #     TEST_VCLUSTER_ID,
+        #     TEST_VIRTUAL_POOL_ID,
         #     INVALID_VALUE_8bit)
 
         logger.info("*** linked_iq_sched  Should be the spine with min idle queue length ***")
@@ -768,12 +768,12 @@ class TesthorusLeaf(BfRuntimeTest):
             self.register_linked_iq_sched,
             'LeafIngress.linked_iq_sched.f1',
             pipe_id,
-            TEST_VCLUSTER_ID)
+            TEST_VIRTUAL_POOL_ID)
         test_register_read(self.target,
             self.register_idle_count,
             'LeafIngress.idle_count.f1',
             pipe_id,
-            TEST_VCLUSTER_ID)
+            TEST_VIRTUAL_POOL_ID)
 
         # for wid in wid_port_mapping.keys():
         #     mirror_cfg_bfrt_key  = self.mirror_cfg_table.make_key([client.KeyTuple('$sid', wid)])
@@ -798,25 +798,25 @@ class TesthorusLeaf(BfRuntimeTest):
         register_write(self.target,
                 self.register_linked_iq_sched,
                 register_name='LeafIngress.linked_iq_sched.f1',
-                index=TEST_VCLUSTER_ID,
+                index=TEST_VIRTUAL_POOL_ID,
                 register_value=initial_linked_iq_spine)
 
         register_write(self.target,
                 self.register_linked_sq_sched,
                 register_name='LeafIngress.linked_sq_sched.f1',
-                index=TEST_VCLUSTER_ID,
+                index=TEST_VIRTUAL_POOL_ID,
                 register_value=initial_linked_sq_spine)
 
         register_write(self.target,
             self.register_idle_count,
             register_name='LeafIngress.idle_count.f1',
-            index=TEST_VCLUSTER_ID,
+            index=TEST_VIRTUAL_POOL_ID,
             register_value=initial_idle_count)
         
         register_write(self.target,
                 self.register_aggregate_queue_len,
                 register_name='LeafIngress.aggregate_queue_len_list.f1',
-                index=TEST_VCLUSTER_ID,
+                index=TEST_VIRTUAL_POOL_ID,
                 register_value=initial_agg_qlen)
 
         # Simply verify the read from hw to check correct values were inserted
@@ -824,14 +824,14 @@ class TesthorusLeaf(BfRuntimeTest):
             self.register_idle_count,
             'LeafIngress.idle_count.f1',
             pipe_id,
-            TEST_VCLUSTER_ID,
+            TEST_VIRTUAL_POOL_ID,
             initial_idle_count)
 
         test_register_read(self.target,
             self.register_aggregate_queue_len,
             'LeafIngress.aggregate_queue_len_list.f1',
             pipe_id,
-            TEST_VCLUSTER_ID,
+            TEST_VIRTUAL_POOL_ID,
             initial_agg_qlen)
 
         # Insert idle_list values (wid of idle workers)
@@ -863,7 +863,7 @@ class TesthorusLeaf(BfRuntimeTest):
         # Insert qlen unit entries
         self.set_queue_len_unit.entry_add(
                 self.target,
-                [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VCLUSTER_ID)])],
+                [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID)])],
                 [self.set_queue_len_unit.make_data([client.DataTuple('cluster_unit', qlen_unit)],
                                              'LeafIngress.act_set_queue_len_unit')]
             )
@@ -876,7 +876,7 @@ class TesthorusLeaf(BfRuntimeTest):
                 self.register_idle_count,
                 'LeafIngress.idle_count.f1',
                 pipe_id,
-                TEST_VCLUSTER_ID,
+                TEST_VIRTUAL_POOL_ID,
                 initial_idle_count - i)
 
             idle_pointer_stack = initial_idle_count - i - 1 # This is the expected stack pointer in the switch (iterates the list from the last element)
@@ -885,8 +885,8 @@ class TesthorusLeaf(BfRuntimeTest):
             src_id = random.randint(1, 255)
             dst_id = random.randint(1, 255)
 
-            new_task_packet = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=random.randint(1, 255), pkt_len=0, task_id=0x10+i, **eth_kwargs)
-            expected_packet = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=initial_idle_list[idle_pointer_stack], pkt_len=0, task_id=0x10+i, **eth_kwargs)
+            new_task_packet = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=random.randint(1, 255), pkt_len=0, task_id=0x10+i, **eth_kwargs)
+            expected_packet = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=initial_idle_list[idle_pointer_stack], pkt_len=0, task_id=0x10+i, **eth_kwargs)
             
             logger.info("Sending task packet on port %d", ig_port)
             testutils.send_packet(self, ig_port, new_task_packet)
@@ -897,16 +897,16 @@ class TesthorusLeaf(BfRuntimeTest):
                 self.register_aggregate_queue_len,
                 'LeafIngress.aggregate_queue_len_list.f1',
                 pipe_id,
-                TEST_VCLUSTER_ID,
+                TEST_VIRTUAL_POOL_ID,
                 expected_agg_qlen)
         
         for i in range(num_task_done):
             dst_id = 100 # this will be identifier for client (receiving reply pkt)
             src_id = initial_idle_list[i]
             ig_port = wid_port_mapping[initial_idle_list[i]]
-            task_done_idle_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, pkt_len=0, task_id=0x10+i, **eth_kwargs)
-            expected_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, pkt_len=0, task_id=0x10+i, **eth_kwargs)            
-            expected_packet_probe_idle = make_horus_probe_idle_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, pkt_len=0, task_id=0x10+i, **eth_kwargs)            
+            task_done_idle_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=dst_id, is_idle=True, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+            expected_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=dst_id, is_idle=True, pkt_len=0, task_id=0x10+i, **eth_kwargs)            
+            expected_packet_probe_idle = make_horus_probe_idle_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=dst_id, pkt_len=0, task_id=0x10+i, **eth_kwargs)            
             logger.info("Sending done_idle packet on port %d", ig_port)
             testutils.send_packet(self, ig_port, task_done_idle_packet)
             
@@ -920,7 +920,7 @@ class TesthorusLeaf(BfRuntimeTest):
                 self.register_idle_count,
                 'LeafIngress.idle_count.f1',
                 pipe_id,
-                TEST_VCLUSTER_ID,
+                TEST_VIRTUAL_POOL_ID,
                 i + 1)
 
     def schedule_task_sq_state(self):
@@ -944,24 +944,24 @@ class TesthorusLeaf(BfRuntimeTest):
         num_valid_us_elements = 1
         num_tasks_to_send = 10
 
-        workers_start_idx = TEST_VCLUSTER_ID * MAX_VCLUSTER_WORKERS
+        workers_start_idx = TEST_VIRTUAL_POOL_ID * MAX_VCLUSTER_WORKERS
         logger.info("***** Writing registers for initial state  *******")
         register_write(self.target,
                 self.register_linked_iq_sched,
                 register_name='LeafIngress.linked_iq_sched.f1',
-                index=TEST_VCLUSTER_ID,
+                index=TEST_VIRTUAL_POOL_ID,
                 register_value=initial_linked_iq_spine)
 
         register_write(self.target,
                 self.register_linked_sq_sched,
                 register_name='LeafIngress.linked_sq_sched.f1',
-                index=TEST_VCLUSTER_ID,
+                index=TEST_VIRTUAL_POOL_ID,
                 register_value=initial_linked_sq_spine)
 
         register_write(self.target,
                 self.register_aggregate_queue_len,
                 register_name='LeafIngress.aggregate_queue_len_list.f1',
-                index=TEST_VCLUSTER_ID,
+                index=TEST_VIRTUAL_POOL_ID,
                 register_value=initial_agg_qlen)
 
         for i, qlen in enumerate(intitial_qlen_state):
@@ -1024,7 +1024,7 @@ class TesthorusLeaf(BfRuntimeTest):
         # Insert qlen unit entries
         self.set_queue_len_unit.entry_add(
                 self.target,
-                [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VCLUSTER_ID)])],
+                [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID)])],
                 [self.set_queue_len_unit.make_data([client.DataTuple('cluster_unit', qlen_unit)],
                                              'LeafIngress.act_set_queue_len_unit')]
             )
@@ -1032,7 +1032,7 @@ class TesthorusLeaf(BfRuntimeTest):
         # Insert num_valid to set actual num workers for this vcluster (in this rack)
         self.get_cluster_num_valid.entry_add(
                 self.target,
-                [self.get_cluster_num_valid.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VCLUSTER_ID)])],
+                [self.get_cluster_num_valid.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID)])],
                 [self.get_cluster_num_valid.make_data([client.DataTuple('num_ds_elements', num_valid_ds_elements), client.DataTuple('num_us_elements', num_valid_us_elements)],
                                              'LeafIngress.act_get_cluster_num_valid')]
             )
@@ -1045,16 +1045,16 @@ class TesthorusLeaf(BfRuntimeTest):
                 self.register_idle_count,
                 'LeafIngress.idle_count.f1',
                 pipe_id,
-                TEST_VCLUSTER_ID,
+                TEST_VIRTUAL_POOL_ID,
                 0)
 
             ig_port = swports[random.randint(9, 15)] # port connected to spine
             src_id = random.randint(1, 255)
             dst_id = random.randint(1, 255)
 
-            new_task_packet = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, local_pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=random.randint(1, 255), pkt_len=0, task_id=0x10+i, **eth_kwargs)
-            expected_packet_0 = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, local_pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=0, pkt_len=0, task_id=0x10+i, **eth_kwargs)
-            expected_packet_1 = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=1, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+            new_task_packet = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, local_pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=random.randint(1, 255), pkt_len=0, task_id=0x10+i, **eth_kwargs)
+            expected_packet_0 = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, local_pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=0, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+            expected_packet_1 = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=1, pkt_len=0, task_id=0x10+i, **eth_kwargs)
             logger.info("Sending task packet on port %d", ig_port)
             testutils.send_packet(self, ig_port, new_task_packet)
             # Note: Can't expect the packet since random sampling happens inside the switch 
@@ -1074,7 +1074,7 @@ class TesthorusLeaf(BfRuntimeTest):
                 self.register_aggregate_queue_len,
                 'LeafIngress.aggregate_queue_len_list.f1',
                 pipe_id,
-                TEST_VCLUSTER_ID,
+                TEST_VIRTUAL_POOL_ID,
                 expected_agg_qlen)
             #time.sleep(0.5)
             
@@ -1117,7 +1117,7 @@ class TesthorusLeaf(BfRuntimeTest):
             dst_id = 100 # this will be identifier for client (receiving reply pkt)
             src_id = i # each worker sends one task done to check if states are updated correctly in the switch
             ig_port = 5
-            task_done_idle_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+            task_done_idle_packet = make_horus_task_done_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
             logger.info("Sending done packet (reply) on port %d", ig_port)
             testutils.send_packet(self, ig_port, task_done_idle_packet)
             
@@ -1270,7 +1270,7 @@ class TesthorusSpine(BfRuntimeTest):
         intitial_deferred_state = [0, 0, 0, 0, 0]
         num_valid_ds_elements = 2 # num bits for available workers for this vcluster in this rack (the worker number will be 2^W)
         max_linked_leafs = 2
-        workers_start_idx = TEST_VCLUSTER_ID * MAX_VCLUSTER_WORKERS
+        workers_start_idx = TEST_VIRTUAL_POOL_ID * MAX_VCLUSTER_WORKERS
         
         l1_id = 1
         mcast_group = 1 # Broadcasting according to the number of leafs in vcluster 
@@ -1286,13 +1286,13 @@ class TesthorusSpine(BfRuntimeTest):
             register_write(self.target,
                 self.register_idle_count,
                 register_name='SpineIngress.idle_count.f1',
-                index=TEST_VCLUSTER_ID,
+                index=TEST_VIRTUAL_POOL_ID,
                 register_value=initial_idle_count)
 
             register_write(self.target,
                 self.register_queue_signal_count,
                 register_name='SpineIngress.queue_signal_count.f1',
-                index=TEST_VCLUSTER_ID,
+                index=TEST_VIRTUAL_POOL_ID,
                 register_value=0)
 
             for i, qlen in enumerate(intitial_qlen_state):
@@ -1336,13 +1336,13 @@ class TesthorusSpine(BfRuntimeTest):
             for i, lid in enumerate(initial_lid_list):
                 self.set_queue_len_unit_1.entry_add(
                     self.target,
-                    [self.set_queue_len_unit_1.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VCLUSTER_ID), client.KeyTuple('horus_md.random_id_1', lid)])],
+                    [self.set_queue_len_unit_1.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID), client.KeyTuple('horus_md.random_id_1', lid)])],
                     [self.set_queue_len_unit_1.make_data([client.DataTuple('cluster_unit', qlen_units[i])],
                                                  'SpineIngress.act_set_queue_len_unit_1')]
                     )
                 self.set_queue_len_unit_2.entry_add(
                     self.target,
-                    [self.set_queue_len_unit_2.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VCLUSTER_ID), client.KeyTuple('horus_md.random_id_2', lid)])],
+                    [self.set_queue_len_unit_2.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID), client.KeyTuple('horus_md.random_id_2', lid)])],
                     [self.set_queue_len_unit_2.make_data([client.DataTuple('cluster_unit', qlen_units[i])],
                                                  'SpineIngress.act_set_queue_len_unit_2')]
                     )
@@ -1359,7 +1359,7 @@ class TesthorusSpine(BfRuntimeTest):
             # Insert num_valid to set total num leafs for this vcluster
             self.get_cluster_num_valid_leafs.entry_add(
                     self.target,
-                    [self.get_cluster_num_valid_leafs.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VCLUSTER_ID)])],
+                    [self.get_cluster_num_valid_leafs.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID)])],
                     [self.get_cluster_num_valid_leafs.make_data([client.DataTuple('num_leafs', num_valid_ds_elements), client.DataTuple('max_linked_leafs', max_linked_leafs)],
                                                  'SpineIngress.act_get_cluster_num_valid_leafs')]
                 )
@@ -1406,7 +1406,7 @@ class TesthorusSpine(BfRuntimeTest):
                     client.DataTuple('$MULTICAST_NODE_L1_XID', int_arr_val=[0])])])
             
             ig_port = swports[random.randint(9, 15)] # port connected to spine
-            idle_remove_pkt = make_horus_idle_remove_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=initial_idle_list[0], dst_id=spine_under_test_id, task_id=0x10, **eth_kwargs)
+            idle_remove_pkt = make_horus_idle_remove_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=initial_idle_list[0], dst_id=spine_under_test_id, task_id=0x10, **eth_kwargs)
             testutils.send_packet(self, ig_port, idle_remove_pkt)
             for i in range(len(broadcast_port_ids)):
                 poll_res = testutils.dp_poll(self)
@@ -1441,13 +1441,13 @@ class TesthorusSpine(BfRuntimeTest):
         register_write(self.target,
             self.register_idle_count,
             register_name='SpineIngress.idle_count.f1',
-            index=TEST_VCLUSTER_ID,
+            index=TEST_VIRTUAL_POOL_ID,
             register_value=initial_idle_count)
         
         # register_write(self.target,
         #     self.register_last_idle_new_index,
         #     register_name='SpineIngress.last_idle_new_index.f1',
-        #     index=TEST_VCLUSTER_ID,
+        #     index=TEST_VIRTUAL_POOL_ID,
         #     register_value=initial_idle_count-1)
         #Insert idle_list values (lid of idle leafs)
         for i in range(initial_idle_count):
@@ -1488,11 +1488,11 @@ class TesthorusSpine(BfRuntimeTest):
             
             logger.info("********* Sending IDLE_REMOVE packets *********")
             ig_port = swports[random.randint(9, 15)] # port connected to spine
-            idle_remove_pkt = make_horus_idle_remove_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=to_be_removed_list[idles_in_rack], dst_id=spine_under_test_id, task_id=0x10+i, **eth_kwargs)
+            idle_remove_pkt = make_horus_idle_remove_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=to_be_removed_list[idles_in_rack], dst_id=spine_under_test_id, task_id=0x10+i, **eth_kwargs)
             testutils.send_packet(self, ig_port, idle_remove_pkt)
             expected_idle_count -= 1
             if idles_in_rack > 1:
-                idle_signal_pkt = make_horus_idle_signal_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=to_be_removed_list[idles_in_rack - 2], dst_id=spine_under_test_id, task_id=0x10+i, **eth_kwargs)
+                idle_signal_pkt = make_horus_idle_signal_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=to_be_removed_list[idles_in_rack - 2], dst_id=spine_under_test_id, task_id=0x10+i, **eth_kwargs)
                 testutils.send_packet(self, ig_port, idle_signal_pkt)
                 expected_idle_count += 1
             
@@ -1506,7 +1506,7 @@ class TesthorusSpine(BfRuntimeTest):
         #         self.register_idle_count,
         #         'SpineIngress.idle_count.f1',
         #         pipe_id,
-        #         TEST_VCLUSTER_ID,
+        #         TEST_VIRTUAL_POOL_ID,
         #         expected_idle_count)
             
         for idle_leaf_id in initial_idle_list:
@@ -1519,7 +1519,7 @@ class TesthorusSpine(BfRuntimeTest):
                 self.register_idle_count,
                 'SpineIngress.idle_count.f1',
                 pipe_id,
-                TEST_VCLUSTER_ID,
+                TEST_VIRTUAL_POOL_ID,
                 expected_idle_count)
         for idle_list_idx in range(initial_idle_count):
             test_register_read(self.target,
@@ -1542,7 +1542,7 @@ class TesthorusSpine(BfRuntimeTest):
         register_write(self.target,
             self.register_idle_count,
             register_name='SpineIngress.idle_count.f1',
-            index=TEST_VCLUSTER_ID,
+            index=TEST_VIRTUAL_POOL_ID,
             register_value=initial_idle_count)
         
         #Insert idle_list values (lid of idle leafs)
@@ -1586,7 +1586,7 @@ class TesthorusSpine(BfRuntimeTest):
                 self.register_idle_count,
                 'SpineIngress.idle_count.f1',
                 pipe_id,
-                TEST_VCLUSTER_ID,
+                TEST_VIRTUAL_POOL_ID,
                 expected_idle_count)
             
             for idle_list_idx in range(initial_idle_count):
@@ -1607,15 +1607,15 @@ class TesthorusSpine(BfRuntimeTest):
                 src_id = random.randint(1, 255)
                 dst_id = random.randint(1, 255)
 
-                new_task_packet = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=spine_under_test_id, pkt_len=0, task_id=0x10+i, **eth_kwargs)
-                expected_packet = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=spine_under_test_id, dst_id=initial_idle_list[idle_pointer_stack], pkt_len=0, task_id=0x10+i, **eth_kwargs)
+                new_task_packet = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=spine_under_test_id, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+                expected_packet = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=spine_under_test_id, dst_id=initial_idle_list[idle_pointer_stack], pkt_len=0, task_id=0x10+i, **eth_kwargs)
                 
                 logger.info("Sending task packet on port %d", ig_port)
                 testutils.send_packet(self, ig_port, new_task_packet)
                 logger.info("Expecting task packet on port %d (IFACE-OUT)", eg_port)
                 testutils.verify_packets(self, expected_packet, [eg_port])
 
-            idle_remove_pkt = make_horus_idle_remove_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=initial_idle_list[idle_pointer_stack], dst_id=spine_under_test_id, task_id=0x10+i, **eth_kwargs)
+            idle_remove_pkt = make_horus_idle_remove_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=initial_idle_list[idle_pointer_stack], dst_id=spine_under_test_id, task_id=0x10+i, **eth_kwargs)
             testutils.send_packet(self, ig_port, idle_remove_pkt)
             expected_idle_count -= 1
             idle_pointer_stack -= 1
@@ -1625,7 +1625,7 @@ class TesthorusSpine(BfRuntimeTest):
                     self.register_idle_count,
                     'SpineIngress.idle_count.f1',
                     pipe_id,
-                    TEST_VCLUSTER_ID,
+                    TEST_VIRTUAL_POOL_ID,
                     expected_idle_count)
 
 
@@ -1648,20 +1648,20 @@ class TesthorusSpine(BfRuntimeTest):
         num_valid_ds_elements = 2 # num bits for available workers for this vcluster in this rack (the worker number will be 2^W)
         max_linked_leafs = 2
 
-        workers_start_idx = TEST_VCLUSTER_ID * MAX_VCLUSTER_WORKERS
+        workers_start_idx = TEST_VIRTUAL_POOL_ID * MAX_VCLUSTER_WORKERS
 
         num_tasks_to_send = 3
 
         register_write(self.target,
             self.register_idle_count,
             register_name='SpineIngress.idle_count.f1',
-            index=TEST_VCLUSTER_ID,
+            index=TEST_VIRTUAL_POOL_ID,
             register_value=initial_idle_count)
 
         register_write(self.target,
             self.register_queue_signal_count,
             register_name='SpineIngress.queue_signal_count.f1',
-            index=TEST_VCLUSTER_ID,
+            index=TEST_VIRTUAL_POOL_ID,
             register_value=int(math.log(len(intitial_qlen_state))/math.log(2)))
 
         for i, qlen in enumerate(intitial_qlen_state):
@@ -1705,13 +1705,13 @@ class TesthorusSpine(BfRuntimeTest):
         for i, lid in enumerate(initial_lid_list):
             self.set_queue_len_unit_1.entry_add(
                 self.target,
-                [self.set_queue_len_unit_1.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VCLUSTER_ID), client.KeyTuple('horus_md.random_id_1', lid)])],
+                [self.set_queue_len_unit_1.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID), client.KeyTuple('horus_md.random_id_1', lid)])],
                 [self.set_queue_len_unit_1.make_data([client.DataTuple('cluster_unit', qlen_units[i])],
                                              'SpineIngress.act_set_queue_len_unit_1')]
                 )
             self.set_queue_len_unit_2.entry_add(
                 self.target,
-                [self.set_queue_len_unit_2.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VCLUSTER_ID), client.KeyTuple('horus_md.random_id_2', lid)])],
+                [self.set_queue_len_unit_2.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID), client.KeyTuple('horus_md.random_id_2', lid)])],
                 [self.set_queue_len_unit_2.make_data([client.DataTuple('cluster_unit', qlen_units[i])],
                                              'SpineIngress.act_set_queue_len_unit_2')]
                 )
@@ -1728,7 +1728,7 @@ class TesthorusSpine(BfRuntimeTest):
         # Insert num_valid to set total num leafs for this vcluster
         self.get_cluster_num_valid_leafs.entry_add(
                 self.target,
-                [self.get_cluster_num_valid_leafs.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VCLUSTER_ID)])],
+                [self.get_cluster_num_valid_leafs.make_key([client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID)])],
                 [self.get_cluster_num_valid_leafs.make_data([client.DataTuple('num_leafs', num_valid_ds_elements), client.DataTuple('max_linked_leafs', max_linked_leafs)],
                                              'SpineIngress.act_get_cluster_num_valid_leafs')]
             )
@@ -1784,16 +1784,16 @@ class TesthorusSpine(BfRuntimeTest):
                 self.register_idle_count,
                 'SpineIngress.idle_count.f1',
                 pipe_id,
-                TEST_VCLUSTER_ID,
+                TEST_VIRTUAL_POOL_ID,
                 0)
 
             ig_port = swports[random.randint(9, 15)] # port connected to spine
             src_id = random.randint(1, 255)
             dst_id = spine_under_test_id
 
-            new_task_packet = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, pkt_len=0, task_id=0x10+i, **eth_kwargs)
-            expected_packet_0 = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=0, pkt_len=0, task_id=0x10+i, **eth_kwargs)
-            expected_packet_1 = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=1, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+            new_task_packet = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=dst_id, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+            expected_packet_0 = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=0, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+            expected_packet_1 = make_horus_task_pkt(dst_ip=SAMPLE_IP_DST, pool_id=TEST_VIRTUAL_POOL_ID, src_id=src_id, dst_id=1, pkt_len=0, task_id=0x10+i, **eth_kwargs)
             logger.info("Sending task packet on port %d", ig_port)
             testutils.send_packet(self, ig_port, new_task_packet)
             poll_res = testutils.dp_poll(self)

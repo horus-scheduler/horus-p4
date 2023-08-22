@@ -20,7 +20,7 @@
 #define PKT_TYPE_IDLE_REMOVE 10
 
 #define HDR_PKT_TYPE_SIZE 8
-#define HDR_CLUSTER_ID_SIZE 16
+#define HDR_POOL_ID_SIZE 16
 #define HDR_LOCAL_CLUSTER_ID_SIZE 8
 #define HDR_SRC_ID_SIZE 16
 #define HDR_QUEUE_LEN_SIZE 9
@@ -79,7 +79,7 @@ header tcp_t {
 
 header faclon_t {
     bit<HDR_PKT_TYPE_SIZE> pkt_type;
-    bit<HDR_CLUSTER_ID_SIZE> cluster_id;
+    bit<HDR_POOL_ID_SIZE> pool_id;
     bit<HDR_LOCAL_CLUSTER_ID_SIZE> local_cluster_id;
     bit<16> src_id; // workerID for ToRs. ToRID for spines.
     bit<16> dst_id;

@@ -2,7 +2,7 @@ import scapy.all as scapy
 
 
 field_dict = {'pkt_type': 1,
-              'cluster_id': 2,
+              'pool_id': 2,
               'local_cluster_id': 1,
               'src_id': 2,
               'q_len': 1,
@@ -43,13 +43,13 @@ class FalconPacket(scapy.Packet):
     name = 'falconPacket'
     fields_desc = [
         get_field('pkt_type'),
-        get_field('cluster_id'),
+        get_field('pool_id'),
         get_field('local_cluster_id'),
         get_field('src_id'),
         get_field('q_len'),
         get_field('task_id')
     ]
 
-def make_falcon_hdr(pkt_type, cluster_id, local_cluster_id, src_id, q_len=0, task_id=1000):
-    return FalconPacket(pkt_type=pkt_type, cluster_id=cluster_id, local_cluster_id=local_cluster_id, src_id=src_id, q_len=q_len, task_id=task_id)
+def make_falcon_hdr(pkt_type, pool_id, local_cluster_id, src_id, q_len=0, task_id=1000):
+    return FalconPacket(pkt_type=pkt_type, pool_id=pool_id, local_cluster_id=local_cluster_id, src_id=src_id, q_len=q_len, task_id=task_id)
 

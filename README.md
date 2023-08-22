@@ -31,8 +31,8 @@ The figure below shows the exact connections between switch ports and machines i
 ![Switch Setup](./figs/switch_connection_setup.png)
 
 ### Emulating multiple leaves in P4 Program
-The current implementation uses the Virtual Cluster (VC) feature to emulate different leafs. The spine program assigns the ```hdr.horus.cluster_id``` based on the selected leaf (this is done when selecting output port). Therfore, each leaf will only have access to the workers in that cluster. 
- The leaf programs first checks the ```hdr.horus.cluster_id```, and based on that each leaf has access to an isolated part of the register arrays. In Horus, each VC has the following registers:   linkage register, Load list register arrays (including the load and drift arrays), idle counter register (used as pointer to the idle list) and idle list register array. 
+The current implementation uses the Virtual Cluster (VC) feature to emulate different leafs. The spine program assigns the ```hdr.horus.pool_id``` based on the selected leaf (this is done when selecting output port). Therfore, each leaf will only have access to the workers in that cluster. 
+ The leaf programs first checks the ```hdr.horus.pool_id```, and based on that each leaf has access to an isolated part of the register arrays. In Horus, each VC has the following registers:   linkage register, Load list register arrays (including the load and drift arrays), idle counter register (used as pointer to the idle list) and idle list register array. 
 The controller is responsible for managing this virtualization as it configures the intial setup for the placement of workers. The current controller codes provide two setup configs used in our experiments: Skewed and Uniform.
 The physical connections between machines and switch do not need to be changed for the two mentioned setps.
 > Important note: The parts of the codes that are only used for *our testbed experiments* are marked in comments with tag: "TESTBEDONLY". These lines do not need to be there if we are not going to emulate multiple leaves. The instructions are given in comments for what should be changed the case that each leaf runs on an actuall switch.

@@ -32,7 +32,7 @@ control SpineIngress(
     Random<bit<16>>() random_ds_id;
 
     /********  Register decelarations *********/
-    Register<leaf_id_t, _>(MAX_LEAFS) idle_list; // Maintains the list of idle leafs for each vcluster (array divided based on cluster_id)
+    Register<leaf_id_t, _>(MAX_LEAFS) idle_list; // Maintains the list of idle leafs for each vcluster (array divided based on pool_id)
         RegisterAction<bit<16>, _, bit<16>>(idle_list) add_to_idle_list = {
             void apply(inout bit<16> value, out bit<16> rv) {
                 value = hdr.saqr.src_id;
@@ -220,7 +220,7 @@ control SpineIngress(
     }
 
     action get_leaf_start_idx () {
-        saqr_md.cluster_ds_start_idx = (bit <16>) (hdr.saqr.cluster_id * MAX_LEAFS_PER_CLUSTER);
+        saqr_md.cluster_ds_start_idx = (bit <16>) (hdr.saqr.pool_id * MAX_LEAFS_PER_CLUSTER);
     }
     action get_array_indices () {
         saqr_md.idle_ds_index = saqr_md.cluster_ds_start_idx + (bit<16>)saqr_md.cluster_idle_count;
@@ -317,7 +317,7 @@ control SpineIngress(
     }
     table get_cluster_num_valid_leafs {
         key = {
-            hdr.saqr.cluster_id : exact;
+            hdr.saqr.pool_id : exact;
         }
         actions = {
             act_get_cluster_num_valid_leafs;
@@ -379,7 +379,7 @@ control SpineIngress(
     }
     table set_queue_len_unit_1 {
         key = {
-            hdr.saqr.cluster_id: exact;
+            hdr.saqr.pool_id: exact;
             saqr_md.random_id_1: exact;
         }
         actions = {
@@ -395,7 +395,7 @@ control SpineIngress(
     }
     table set_queue_len_unit_2 {
         key = {
-            hdr.saqr.cluster_id: exact;
+            hdr.saqr.pool_id: exact;
             saqr_md.random_id_2: exact;
         }
         actions = {
@@ -446,15 +446,15 @@ control SpineIngress(
                     compare_correct_queue_len();
                 } else {
                     if (hdr.saqr.pkt_type == PKT_TYPE_IDLE_SIGNAL) {
-                        saqr_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.saqr.cluster_id);
-                        reset_queue_signal_count.execute(hdr.saqr.cluster_id);
+                        saqr_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.saqr.pool_id);
+                        reset_queue_signal_count.execute(hdr.saqr.pool_id);
                     } else if (hdr.saqr.pkt_type == PKT_TYPE_IDLE_REMOVE) { // Only decrement idle count in first pass of removal
-                        saqr_md.cluster_idle_count = read_and_dec_idle_count.execute(hdr.saqr.cluster_id);
+                        saqr_md.cluster_idle_count = read_and_dec_idle_count.execute(hdr.saqr.pool_id);
                     } else if (hdr.saqr.pkt_type == PKT_TYPE_QUEUE_SIGNAL_INIT) {
-                        saqr_md.cluster_num_valid_queue_signals = read_and_inc_queue_signal_count.execute(hdr.saqr.cluster_id);
+                        saqr_md.cluster_num_valid_queue_signals = read_and_inc_queue_signal_count.execute(hdr.saqr.pool_id);
                     } else {
-                        saqr_md.cluster_idle_count = read_idle_count.execute(hdr.saqr.cluster_id); // Get num_idle leafs (pointer to top of stack)
-                        saqr_md.cluster_num_valid_queue_signals = read_queue_signal_count.execute(hdr.saqr.cluster_id); // How many queue signals available
+                        saqr_md.cluster_idle_count = read_idle_count.execute(hdr.saqr.pool_id); // Get num_idle leafs (pointer to top of stack)
+                        saqr_md.cluster_num_valid_queue_signals = read_queue_signal_count.execute(hdr.saqr.pool_id); // How many queue signals available
                     }
                 }
             }

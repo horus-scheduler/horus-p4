@@ -59,7 +59,7 @@ def main():
     _dst_ip = '10.0.2.101'
 
     for i in range(num_tasks):
-        new_task_packet = make_falcon_task_pkt(dst_ip=_dst_ip, cluster_id=5, local_cluster_id=1, src_id=6, task_id=0x10+i, **eth_kwargs)
+        new_task_packet = make_falcon_task_pkt(dst_ip=_dst_ip, pool_id=5, local_cluster_id=1, src_id=6, task_id=0x10+i, **eth_kwargs)
 
         print('>> New Task packet (size = %d bytes):' % len(new_task_packet))
         #new_task_packet.show()

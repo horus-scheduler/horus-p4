@@ -4,7 +4,7 @@ import scapy.all as scapy
 MDC_DEFAULT_PKT_SIZE = 64
 
 field_dict = {'pkt_type': 1,
-              'cluster_id': 2,
+              'pool_id': 2,
               'local_cluster_id': 1,
               'src_id': 2,
               'dst_id': 2,
@@ -46,7 +46,7 @@ class FalconPacket(scapy.Packet):
     name = 'falconPacket'
     fields_desc = [
         get_field('pkt_type'),
-        get_field('cluster_id'),
+        get_field('pool_id'),
         get_field('local_cluster_id'),
         get_field('src_id'),
         get_field('dst_id'),
@@ -76,9 +76,9 @@ def make_eth_hdr(src_mac=None, dst_mac=None, ip_encap=False, **kwargs):
         hdr.dst = dst_mac
     return hdr
 
-def make_falcon_task_pkt(dst_ip, cluster_id, local_cluster_id, src_id, dst_id=0, q_len=0, task_id=1000, pkt_len=128, **kwargs):
+def make_falcon_task_pkt(dst_ip, pool_id, local_cluster_id, src_id, dst_id=0, q_len=0, task_id=1000, pkt_len=128, **kwargs):
     eth_hdr = make_eth_hdr(**kwargs)
-    falcon_hdr = FalconPacket(pkt_type=PKT_TYPE_NEW_TASK, cluster_id=cluster_id, local_cluster_id=local_cluster_id, src_id=src_id, dst_id=dst_id, q_len=q_len, task_id=task_id)
+    falcon_hdr = FalconPacket(pkt_type=PKT_TYPE_NEW_TASK, pool_id=pool_id, local_cluster_id=local_cluster_id, src_id=src_id, dst_id=dst_id, q_len=q_len, task_id=task_id)
 
     data_len = pkt_len - len(eth_hdr) - len(falcon_hdr)
     if data_len <= 0:
@@ -87,12 +87,12 @@ def make_falcon_task_pkt(dst_ip, cluster_id, local_cluster_id, src_id, dst_id=0,
     pkt = scapy.IP(dst=dst_ip) / scapy.UDP(dport=FALCON_PORT) / falcon_hdr / payload
     return pkt
 
-def make_falcon_task_done_pkt(dst_ip, cluster_id, local_cluster_id, src_id, dst_id=0, is_idle=False, q_len=0, task_id=1000, pkt_len=128, **kwargs):
+def make_falcon_task_done_pkt(dst_ip, pool_id, local_cluster_id, src_id, dst_id=0, is_idle=False, q_len=0, task_id=1000, pkt_len=128, **kwargs):
     eth_hdr = make_eth_hdr(**kwargs)
     if is_idle:
-        falcon_hdr = FalconPacket(pkt_type=PKT_TYPE_TASK_DONE_IDLE, cluster_id=cluster_id, local_cluster_id=local_cluster_id, src_id=src_id, dst_id=dst_id, q_len=q_len, task_id=task_id)
+        falcon_hdr = FalconPacket(pkt_type=PKT_TYPE_TASK_DONE_IDLE, pool_id=pool_id, local_cluster_id=local_cluster_id, src_id=src_id, dst_id=dst_id, q_len=q_len, task_id=task_id)
     else:
-        falcon_hdr = FalconPacket(pkt_type=PKT_TYPE_TASK_DONE, cluster_id=cluster_id, local_cluster_id=local_cluster_id, src_id=src_id, dst_id=dst_id, q_len=q_len, task_id=task_id)
+        falcon_hdr = FalconPacket(pkt_type=PKT_TYPE_TASK_DONE, pool_id=pool_id, local_cluster_id=local_cluster_id, src_id=src_id, dst_id=dst_id, q_len=q_len, task_id=task_id)
     pkt = scapy.IP(dst=dst_ip) / scapy.UDP(dport=FALCON_PORT) / falcon_hdr
     return pkt
 

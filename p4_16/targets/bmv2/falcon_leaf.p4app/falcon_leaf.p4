@@ -188,7 +188,7 @@ control ingress(inout headers hdr, inout metadata meta, inout standard_metadata_
             act_set_queue_len_unit;
             _drop;
         }
-        size = HDR_CLUSTER_ID_SIZE;
+        size = HDR_POOL_ID_SIZE;
         default_action = _drop;
     }
 
@@ -210,13 +210,13 @@ control ingress(inout headers hdr, inout metadata meta, inout standard_metadata_
     // Gets the actual number of downstream elements (workers or tor schedulers) for vcluster (passed by ctrl plane)
     table get_cluster_num_valid_ds {
         key = {
-            hdr.falcon.cluster_id : exact;
+            hdr.falcon.pool_id : exact;
         }
         actions = {
             act_get_cluster_num_valid_ds;
             NoAction;
         }
-        size = HDR_CLUSTER_ID_SIZE;
+        size = HDR_POOL_ID_SIZE;
         default_action = NoAction;
     }
 
@@ -254,7 +254,7 @@ control ingress(inout headers hdr, inout metadata meta, inout standard_metadata_
     table forward_falcon {
         key = {
             hdr.falcon.dst_id: exact;
-            hdr.falcon.cluster_id: exact;
+            hdr.falcon.pool_id: exact;
         }
         actions = {
             act_forward_falcon;

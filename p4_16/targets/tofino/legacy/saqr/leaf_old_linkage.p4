@@ -270,7 +270,7 @@ control LeafIngress(
             Random<bit<16>>() random_worker_id_16;
 
             action get_worker_start_idx () {
-                saqr_md.cluster_ds_start_idx = (bit <16>) (hdr.saqr.cluster_id * MAX_WORKERS_PER_CLUSTER);
+                saqr_md.cluster_ds_start_idx = (bit <16>) (hdr.saqr.pool_id * MAX_WORKERS_PER_CLUSTER);
             }
 
             // Calculates the index of next idle worker in idle_list array.
@@ -295,7 +295,7 @@ control LeafIngress(
             }
             table set_queue_len_unit {
                 key = {
-                    hdr.saqr.cluster_id: exact;
+                    hdr.saqr.pool_id: exact;
                 }
                 actions = {
                     act_set_queue_len_unit;
@@ -342,7 +342,7 @@ control LeafIngress(
             }
             table get_cluster_num_valid {
                 key = {
-                    hdr.saqr.cluster_id : exact;
+                    hdr.saqr.pool_id : exact;
                 }
                 actions = {
                     act_get_cluster_num_valid;
@@ -488,17 +488,17 @@ control LeafIngress(
                         set_queue_len_unit.apply();
                         if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE) {
                                 // @st st_idle_count = 0
-                            saqr_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.saqr.cluster_id);
+                            saqr_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.saqr.pool_id);
                         } else if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
-                            saqr_md.cluster_idle_count = read_and_dec_idle_count.execute(hdr.saqr.cluster_id); // Read last idle count for vcluster
+                            saqr_md.cluster_idle_count = read_and_dec_idle_count.execute(hdr.saqr.pool_id); // Read last idle count for vcluster
                         } else if (hdr.saqr.pkt_type == PKT_TYPE_PROBE_IDLE_RESPONSE) {
-                            saqr_md.cluster_idle_count = read_idle_count.execute(hdr.saqr.cluster_id); // Read last idle count for vcluster
+                            saqr_md.cluster_idle_count = read_idle_count.execute(hdr.saqr.pool_id); // Read last idle count for vcluster
                         }
 
                         if (hdr.saqr.pkt_type == PKT_TYPE_QUEUE_REMOVE) {
-                            remove_linked_sq.execute(hdr.saqr.cluster_id); 
+                            remove_linked_sq.execute(hdr.saqr.pool_id); 
                         } else {
-                            saqr_md.linked_sq_id = read_update_linked_sq.execute(hdr.saqr.cluster_id); // Get ID of the Spine that the leaf reports to   
+                            saqr_md.linked_sq_id = read_update_linked_sq.execute(hdr.saqr.pool_id); // Get ID of the Spine that the leaf reports to   
 
                         }
 
@@ -518,13 +518,13 @@ control LeafIngress(
                             gen_random_workers_16();
                             if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE || hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
                                 //@st st_aggregate_queue = 0
-                                saqr_md.aggregate_queue_len = update_read_aggregate_queue_len.execute(hdr.saqr.cluster_id);
-                                saqr_md.spine_view_ok = inc_read_linked_view_drift.execute(hdr.saqr.cluster_id);
+                                saqr_md.aggregate_queue_len = update_read_aggregate_queue_len.execute(hdr.saqr.pool_id);
+                                saqr_md.spine_view_ok = inc_read_linked_view_drift.execute(hdr.saqr.pool_id);
                             } else if(hdr.saqr.pkt_type == PKT_TYPE_PROBE_IDLE_RESPONSE) {
-                                saqr_md.last_iq_len = read_update_spine_iq_len_1.execute(hdr.saqr.cluster_id);
-                                saqr_md.last_probed_id = read_update_spine_probed_id.execute(hdr.saqr.cluster_id);
+                                saqr_md.last_iq_len = read_update_spine_iq_len_1.execute(hdr.saqr.pool_id);
+                                saqr_md.last_probed_id = read_update_spine_probed_id.execute(hdr.saqr.pool_id);
                             } else if (hdr.saqr.pkt_type == PKT_TYPE_SCAN_QUEUE_SIGNAL) {
-                                reset_linked_view_drift.execute(hdr.saqr.cluster_id);
+                                reset_linked_view_drift.execute(hdr.saqr.pool_id);
                             }
                         }
                         
@@ -616,7 +616,7 @@ control LeafIngress(
                             // }  
                             if (hdr.saqr.pkt_type == PKT_TYPE_PROBE_IDLE_RESPONSE || (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE && saqr_md.cluster_idle_count == 0)) { // Only update linkage if this is the leaf have just became idle
                                 if (saqr_md.last_probed_id != INVALID_VALUE_16bit) { // This is the second probe response
-                                    write_linked_iq.execute(hdr.saqr.cluster_id);
+                                    write_linked_iq.execute(hdr.saqr.pool_id);
                                     hdr.saqr.pkt_type = PKT_TYPE_IDLE_SIGNAL; // Now change to idle signal to notify the selected spine
                                 } else {
                                     if(hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE){

@@ -27,7 +27,7 @@
 #define PORT_PCI_CPU 192
 
 #define HDR_PKT_TYPE_SIZE 8
-#define HDR_CLUSTER_ID_SIZE 16
+#define HDR_POOL_ID_SIZE 16
 #define HDR_SRC_ID_SIZE 16
 #define HDR_QUEUE_LEN_SIZE 16
 #define HDR_TASK_ID_SIZE 16
@@ -79,7 +79,7 @@ header empty_t {
 
 header horus_h {
     bit<HDR_PKT_TYPE_SIZE> pkt_type;
-    bit<HDR_CLUSTER_ID_SIZE> cluster_id;
+    bit<HDR_POOL_ID_SIZE> pool_id;
     bit<16> src_id;                 // workerID for ToRs. ToRID for spines.
     bit<16> dst_id;
     bit<HDR_QUEUE_LEN_SIZE> qlen;   // Also used for reporting length of idle list (from spine sw to leaf sw) and indicating the decision type for a scheduled task (Idle selection or not)

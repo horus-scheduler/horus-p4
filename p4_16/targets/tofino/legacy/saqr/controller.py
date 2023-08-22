@@ -14,7 +14,7 @@ import numpy as np
 
 DEBUG_DUMP_REGS = False
 
-TEST_VCLUSTER_ID = 0
+TEST_VIRTUAL_POOL_ID = 0
 MAX_VCLUSTER_WORKERS = 32
 INVALID_VALUE_8bit = 0x7F
 INVALID_VALUE_16bit = 0x7FFF
@@ -443,7 +443,7 @@ class SpineController():
 
     def init_data(self):
         self.pipe_id = 0
-        self.TEST_VCLUSTER_ID = 0
+        self.TEST_VIRTUAL_POOL_ID = 0
         self.MAX_VCLUSTER_LEAVES = 16 # This number is per cluster. *Important: should be the same in p4 code (fixed at compile time)
         self.initial_idle_list = [0, 1, 2, 3]
         
@@ -459,7 +459,7 @@ class SpineController():
         self.intitial_deferred_state = [0] * len(self.initial_idle_list)
         self.num_valid_ds_elements = len(self.initial_idle_list) # num available leaves this vcluster (the number in hardware will be 2^W)
 
-        self.leaf_start_idx = self.TEST_VCLUSTER_ID * self.MAX_VCLUSTER_LEAVES
+        self.leaf_start_idx = self.TEST_VIRTUAL_POOL_ID * self.MAX_VCLUSTER_LEAVES
     
     def set_tables(self):
         # Insert idle_list values (wid of idle workers)
@@ -479,13 +479,13 @@ class SpineController():
         register_write(self.target,
             self.register_idle_count,
             register_name='SpineIngress.idle_count.f1',
-            index=self.TEST_VCLUSTER_ID,
+            index=self.TEST_VIRTUAL_POOL_ID,
             register_value=self.initial_idle_count)
         test_register_read(self.target,
             self.register_idle_count,
             'SpineIngress.idle_count.f1',
             self.pipe_id,
-            self.TEST_VCLUSTER_ID)
+            self.TEST_VIRTUAL_POOL_ID)
         
         
         for i, qlen in enumerate(self.intitial_qlen_state):
@@ -523,32 +523,32 @@ class SpineController():
         for idx, leaf_id in enumerate(self.initial_idle_list):
             self.set_queue_len_unit_1.entry_add(
                 self.target,
-                [self.set_queue_len_unit_1.make_key([client.KeyTuple('horus_md.random_id_1', leaf_id), client.KeyTuple('hdr.horus.pool_id', TEST_VCLUSTER_ID)])],
+                [self.set_queue_len_unit_1.make_key([client.KeyTuple('horus_md.random_id_1', leaf_id), client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID)])],
                 [self.set_queue_len_unit_1.make_data([client.DataTuple('cluster_unit', self.qlen_unit[idx])],
                                              'SpineIngress.act_set_queue_len_unit_1')]
             )
             self.set_queue_len_unit_2.entry_add(
                 self.target,
-                [self.set_queue_len_unit_2.make_key([client.KeyTuple('horus_md.random_id_2', leaf_id), client.KeyTuple('hdr.horus.pool_id', TEST_VCLUSTER_ID)])],
+                [self.set_queue_len_unit_2.make_key([client.KeyTuple('horus_md.random_id_2', leaf_id), client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID)])],
                 [self.set_queue_len_unit_2.make_data([client.DataTuple('cluster_unit', self.qlen_unit[idx])],
                                              'SpineIngress.act_set_queue_len_unit_2')]
             )
             self.get_rand_leaf_id_1.entry_add(
                 self.target,
-                [self.get_rand_leaf_id_1.make_key([client.KeyTuple('horus_md.random_ds_index_1', idx), client.KeyTuple('hdr.horus.pool_id', TEST_VCLUSTER_ID)])],
+                [self.get_rand_leaf_id_1.make_key([client.KeyTuple('horus_md.random_ds_index_1', idx), client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID)])],
                 [self.get_rand_leaf_id_1.make_data([client.DataTuple('leaf_id', leaf_id)],
                                              'SpineIngress.act_get_rand_leaf_id_1')]
             )
             self.get_rand_leaf_id_2.entry_add(
                 self.target,
-                [self.get_rand_leaf_id_2.make_key([client.KeyTuple('horus_md.random_ds_index_2', idx), client.KeyTuple('hdr.horus.pool_id', TEST_VCLUSTER_ID)])],
+                [self.get_rand_leaf_id_2.make_key([client.KeyTuple('horus_md.random_ds_index_2', idx), client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID)])],
                 [self.get_rand_leaf_id_2.make_data([client.DataTuple('leaf_id', leaf_id)],
                                              'SpineIngress.act_get_rand_leaf_id_2')]
             )
 
         self.get_cluster_num_valid.entry_add(
                 self.target,
-                [self.get_cluster_num_valid.make_key([client.KeyTuple('hdr.horus.pool_id', self.TEST_VCLUSTER_ID)])],
+                [self.get_cluster_num_valid.make_key([client.KeyTuple('hdr.horus.pool_id', self.TEST_VIRTUAL_POOL_ID)])],
                 [self.get_cluster_num_valid.make_data([client.DataTuple('num_leafs', self.num_valid_ds_elements)],
                                              'SpineIngress.act_get_cluster_num_valid_leafs')]
             )
@@ -604,7 +604,7 @@ class SpineController():
             self.register_stat_count_resub,
             'SpineIngress.stat_count_resub.f1',
             self.pipe_id,
-            TEST_VCLUSTER_ID)
+            TEST_VIRTUAL_POOL_ID)
         print ("Total resubmissions at Spine (Task resub + Idle remove resub): %d" %(resub_tot))
 
         task_tot = test_register_read(self.target,
