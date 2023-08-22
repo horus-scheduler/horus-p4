@@ -27,14 +27,15 @@
 #define PORT_PCI_CPU 192
 
 #define HDR_PKT_TYPE_SIZE 8
-#define HDR_POOL_ID_SIZE 16
+#define HDR_CLUSTER_ID_SIZE 16
 #define HDR_SRC_ID_SIZE 16
 #define HDR_QUEUE_LEN_SIZE 16
-#define HDR_TASK_ID_SIZE 16
-#define HDR_horus_RAND_GROUP_SIZE 8
-#define HDR_horus_DST_SIZE 8
+#define HDR_SEQ_NUM_SIZE 16
+#define HDR_saqr_RAND_GROUP_SIZE 8
+#define HDR_saqr_DST_SIZE 8
 
 #define QUEUE_LEN_FIXED_POINT_SIZE 16
+
 
 #define MAX_VCLUSTERS 32
 #define MAX_WORKERS_PER_CLUSTER 16
@@ -61,12 +62,6 @@
 const bit<8> INVALID_VALUE_8bit = 8w0x7F;
 const bit<16> INVALID_VALUE_16bit = 16w0x7FFF;
 
-const bit<8> STATE_LINKED = 8w0x00;
-const bit<8> STATE_REM_SENT = 8w0x01;
-const bit<8> STATE_UNLINKED = 8w0x02;
-const bit<8> STATE_ADD_SENT = 8w0x03;
-
-
 typedef bit<HDR_QUEUE_LEN_SIZE> queue_len_t;
 typedef bit<9> port_id_t;
 typedef bit<16> worker_id_t;
@@ -77,20 +72,20 @@ typedef bit<QUEUE_LEN_FIXED_POINT_SIZE> len_fixed_point_t;
 header empty_t {
 }
 
-header horus_h {
+header saqr_h {
     bit<HDR_PKT_TYPE_SIZE> pkt_type;
-    bit<HDR_POOL_ID_SIZE> pool_id;
+    bit<HDR_CLUSTER_ID_SIZE> cluster_id;
     bit<16> src_id;                 // workerID for ToRs. ToRID for spines.
     bit<16> dst_id;
     bit<HDR_QUEUE_LEN_SIZE> qlen;   // Also used for reporting length of idle list (from spine sw to leaf sw) and indicating the decision type for a scheduled task (Idle selection or not)
-    bit<HDR_TASK_ID_SIZE> task_id;   
+    bit<HDR_SEQ_NUM_SIZE> seq_num;   
 }
 
-struct horus_header_t {
+struct saqr_header_t {
     ethernet_h ethernet;
     ipv4_h ipv4;
     udp_h udp;
-    horus_h horus;
+    saqr_h saqr;
 }
 
 
@@ -109,7 +104,7 @@ struct eg_metadata_t {
     bit<32> task_counter;
 }
 
-struct horus_metadata_t {
+struct saqr_metadata_t {
     bit<1> idle_remove_lock;
     bit<HDR_SRC_ID_SIZE> linked_sq_id;
     bit<HDR_SRC_ID_SIZE> linked_iq_id;
@@ -151,11 +146,6 @@ struct horus_metadata_t {
     bit<QUEUE_LEN_FIXED_POINT_SIZE> not_selected_ds_qlen;
     bit<QUEUE_LEN_FIXED_POINT_SIZE> queue_len_diff;
 
-    bit<16> index_idle_list;
-    bit<16> backoff_counter1;
-    bit<16> backoff_counter2;
-    bit<16> backoff_counter3;
-    bit<16> num_valid_half;
     bit<16> deferred_qlen_1;
     bit<16> cluster_absolute_leaf_index;
     bit<16> idle_ds_id;
@@ -174,7 +164,6 @@ struct horus_metadata_t {
     bit<16> idle_id_to_write;
     task_resub_hdr_t task_resub_hdr;
     bit<8> idle_len_8bit;
-    bit<8> curr_state;
     bit<16> spine_view_ok;
     bit<16> idle_rr_index;
     bit<16> selected_idle_index;

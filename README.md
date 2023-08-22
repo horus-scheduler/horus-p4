@@ -1,6 +1,6 @@
 
 # horus-p4
-This repo contains the P4 switch implementation for **Horus: Distributed In-network Task Scheduler for Datacenters**.
+This repo contains the P4 implementation for NSDI'24 paper, **Horus: Granular In-Network Task Scheduler for Cloud Datacenters**.
 
 ## Repository Structure
 
