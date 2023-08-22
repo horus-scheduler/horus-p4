@@ -67,7 +67,7 @@ control LeafIngress(
             Random<bit<16>>() random_worker_id_16;
 
             action get_worker_start_idx () {
-                horus_md.cluster_ds_start_idx = (bit <16>) (hdr.horus.cluster_id * MAX_WORKERS_PER_CLUSTER);
+                horus_md.cluster_ds_start_idx = (bit <16>) (hdr.horus.pool_id * MAX_WORKERS_PER_CLUSTER);
             }
 
             action _drop() {
@@ -95,13 +95,13 @@ control LeafIngress(
             }
             table get_cluster_num_valid {
                 key = {
-                    hdr.horus.cluster_id : exact;
+                    hdr.horus.pool_id : exact;
                 }
                 actions = {
                     act_get_cluster_num_valid;
                     NoAction;
                 }
-                size = HDR_CLUSTER_ID_SIZE;
+                size = HDR_POOL_ID_SIZE;
                 default_action = NoAction;
             }
 
@@ -110,13 +110,13 @@ control LeafIngress(
             }
             table set_queue_len_unit {
                 key = {
-                    hdr.horus.cluster_id: exact;
+                    hdr.horus.pool_id: exact;
                 }
                 actions = {
                     act_set_queue_len_unit;
                     NoAction;
                 }
-                    size = HDR_CLUSTER_ID_SIZE;
+                    size = HDR_POOL_ID_SIZE;
                     default_action = NoAction;
             }
  
@@ -190,8 +190,8 @@ control LeafIngress(
                         get_cluster_num_valid.apply();
                         gen_random_workers_16();
                         if (hdr.horus.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.horus.pkt_type == PKT_TYPE_TASK_DONE || hdr.horus.pkt_type == PKT_TYPE_NEW_TASK) {
-                            horus_md.aggregate_queue_len = update_read_aggregate_queue_len.execute(hdr.horus.cluster_id);
-                            horus_md.linked_sq_id = read_linked_sq.execute(hdr.horus.cluster_id);
+                            horus_md.aggregate_queue_len = update_read_aggregate_queue_len.execute(hdr.horus.pool_id);
+                            horus_md.linked_sq_id = read_linked_sq.execute(hdr.horus.pool_id);
                         }
                     }
                     
@@ -237,7 +237,7 @@ control LeafIngress(
                             hdr.horus.pkt_type = PKT_TYPE_QUEUE_SIGNAL;
                             // TESTBEDONLY: See comments in Horus leaf. Uncomment below and comment the next line for real world.
                             //hdr.horus.src_id = SWITCH_ID; 
-                            hdr.horus.src_id = hdr.horus.cluster_id; 
+                            hdr.horus.src_id = hdr.horus.pool_id; 
                             hdr.horus.qlen = horus_md.aggregate_queue_len;
                             hdr.horus.dst_id = horus_md.linked_sq_id;
                             ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE; 

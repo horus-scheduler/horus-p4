@@ -25,7 +25,7 @@ control SpineIngress(
     }
 
     action get_leaf_start_idx () {
-        horus_md.cluster_ds_start_idx = (bit <16>) (hdr.horus.cluster_id * MAX_LEAFS_PER_CLUSTER);
+        horus_md.cluster_ds_start_idx = (bit <16>) (hdr.horus.pool_id * MAX_LEAFS_PER_CLUSTER);
     }
     
 
@@ -74,7 +74,7 @@ control SpineIngress(
         ig_intr_tm_md.ucast_egress_port = port;
         // TESTBEDONLY: comment the line below when no need for emulating multiple leaf schedulers using one switch. 
         // See Horus spine comments for details.
-        //hdr.horus.cluster_id = hdr.horus.dst_id; // We use different cluster ids for each virtual leaf switch 
+        //hdr.horus.pool_id = hdr.horus.dst_id; // We use different cluster ids for each virtual leaf switch 
     }
     table forward_horus_switch_dst {
         key = {
@@ -93,13 +93,13 @@ control SpineIngress(
     }
     table get_cluster_num_valid_leafs { // TODO: fix typo: Leaves !
         key = {
-            hdr.horus.cluster_id : exact;
+            hdr.horus.pool_id : exact;
         }
         actions = {
             act_get_cluster_num_valid_leafs;
             NoAction;
         }
-        size = HDR_CLUSTER_ID_SIZE;
+        size = HDR_POOL_ID_SIZE;
         default_action = NoAction;
     }
     
@@ -110,7 +110,7 @@ control SpineIngress(
     table get_rand_leaf_id_1 {
         key = {
             horus_md.random_ds_index_1: exact;
-            hdr.horus.cluster_id: exact;
+            hdr.horus.pool_id: exact;
         }
         actions = {
             act_get_rand_leaf_id_1();
@@ -126,7 +126,7 @@ control SpineIngress(
            
         if (hdr.horus.dst_id == SWITCH_ID && hdr.horus.pkt_type == PKT_TYPE_NEW_TASK) { // If this packet is destined for this spine do horus processing ot. its just an intransit packet we need to forward on correct port
             // TESTBEDONLY: See horus spine comments. comment the line below when no need for emulating multiple leaf schedulers.
-            hdr.horus.cluster_id = 0;
+            hdr.horus.pool_id = 0;
             @stage(1) {
                 get_leaf_start_idx ();
                 get_cluster_num_valid_leafs.apply();

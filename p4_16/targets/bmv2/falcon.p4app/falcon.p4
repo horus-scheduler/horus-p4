@@ -143,13 +143,13 @@ control ingress(inout headers hdr, inout metadata meta, inout standard_metadata_
 
     // Get number of queue len signal available at spine
     action act_spine_get_cluster_num_avail_queues() {  
-        queue_len_count.read(meta.falcon_meta.cluster_num_avail_queue, (bit<32>) hdr.falcon.cluster_id);
+        queue_len_count.read(meta.falcon_meta.cluster_num_avail_queue, (bit<32>) hdr.falcon.pool_id);
     }
 
     action act_spine_add_queue_len () {
         // Read, increement write back the register (stateful ALU operation in Tofino ?)
-        queue_len_count.read(meta.falcon_meta.cluster_num_avail_queue, (bit<32>) hdr.falcon.cluster_id);
-        queue_len_count.write((bit<32>) hdr.falcon.cluster_id, meta.falcon_meta.cluster_num_avail_queue + 1);
+        queue_len_count.read(meta.falcon_meta.cluster_num_avail_queue, (bit<32>) hdr.falcon.pool_id);
+        queue_len_count.write((bit<32>) hdr.falcon.pool_id, meta.falcon_meta.cluster_num_avail_queue + 1);
         // Calculate index to write new queue len
         // meta.falcon_meta.cluster_worker_start_idx = (bit <16>) (hdr.falcon.local_cluster_id * MAX_WORKERS_PER_CLUSTER);
         // Write new queue len info
@@ -169,8 +169,8 @@ control ingress(inout headers hdr, inout metadata meta, inout standard_metadata_
     }
 
     action act_spine_read_idle_count() {
-        idle_count.read(meta.falcon_meta.cluster_idle_count, (bit<32>) hdr.falcon.cluster_id);
-        meta.falcon_meta.cluster_worker_start_idx = (bit <16>) (hdr.falcon.cluster_id * MAX_WORKERS_PER_CLUSTER);
+        idle_count.read(meta.falcon_meta.cluster_idle_count, (bit<32>) hdr.falcon.pool_id);
+        meta.falcon_meta.cluster_worker_start_idx = (bit <16>) (hdr.falcon.pool_id * MAX_WORKERS_PER_CLUSTER);
         /* TODO: use "add_to_field()" for hardware targets, simply "+" in bvm */
         //meta.falcon_meta.cluster_idle_count = meta.falcon_meta.cluster_idle_count + 1;
         meta.falcon_meta.idle_worker_index = (bit <16>) meta.falcon_meta.cluster_idle_count + meta.falcon_meta.cluster_worker_start_idx - 1;
@@ -202,7 +202,7 @@ control ingress(inout headers hdr, inout metadata meta, inout standard_metadata_
     action act_spine_pop_from_idle_list () {
         meta.falcon_meta.idle_worker_index = meta.falcon_meta.idle_worker_index - 1;
 
-        idle_count.write((bit<32>) hdr.falcon.cluster_id, meta.falcon_meta.cluster_idle_count - 1);
+        idle_count.write((bit<32>) hdr.falcon.pool_id, meta.falcon_meta.cluster_idle_count - 1);
     }
 
     action act_decrement_queue_len() {
@@ -294,7 +294,7 @@ control ingress(inout headers hdr, inout metadata meta, inout standard_metadata_
             act_set_queue_len_unit;
             _drop;
         }
-        size = HDR_CLUSTER_ID_SIZE;
+        size = HDR_POOL_ID_SIZE;
         default_action = _drop;
     }
 
@@ -331,25 +331,25 @@ control ingress(inout headers hdr, inout metadata meta, inout standard_metadata_
     // Gets the actual number of downstream elements (workers or tor schedulers) for vcluster (passed by ctrl plane)
     table get_cluster_num_valid_ds {
         key = {
-            hdr.falcon.cluster_id : exact;
+            hdr.falcon.pool_id : exact;
         }
         actions = {
             act_get_cluster_num_valid_ds;
             NoAction;
         }
-        size = HDR_CLUSTER_ID_SIZE;
+        size = HDR_POOL_ID_SIZE;
         default_action = NoAction;
     }
 
     table spine_get_cluster_num_valid_ds {
         key = {
-            hdr.falcon.cluster_id : exact;
+            hdr.falcon.pool_id : exact;
         }
         actions = {
             act_get_cluster_num_valid_ds;
             NoAction;
         }
-        size = HDR_CLUSTER_ID_SIZE;
+        size = HDR_POOL_ID_SIZE;
         default_action = NoAction;
     }
 
@@ -423,7 +423,7 @@ control ingress(inout headers hdr, inout metadata meta, inout standard_metadata_
     table forward_falcon {
         key = {
             hdr.falcon.dst_id: exact;
-            hdr.falcon.cluster_id: exact;
+            hdr.falcon.pool_id: exact;
         }
         actions = {
             act_forward_falcon;
@@ -465,7 +465,7 @@ control ingress(inout headers hdr, inout metadata meta, inout standard_metadata_
     table spine_forward_falcon_early {
         key = {
             hdr.falcon.dst_id: exact;
-            hdr.falcon.cluster_id: exact;
+            hdr.falcon.pool_id: exact;
         }
         actions = {
             act_forward_falcon;
@@ -479,7 +479,7 @@ control ingress(inout headers hdr, inout metadata meta, inout standard_metadata_
     table spine_forward_falcon {
         key = {
             hdr.falcon.dst_id: exact;
-            hdr.falcon.cluster_id: exact;
+            hdr.falcon.pool_id: exact;
         }
         actions = {
             act_forward_falcon;
@@ -704,7 +704,7 @@ control ingress(inout headers hdr, inout metadata meta, inout standard_metadata_
                 } else if (hdr.falcon.pkt_type == PKT_TYPE_IDLE_SIGNAL) {
                     if (meta.falcon_meta.cluster_idle_count < MAX_IDLE_WORKERS_PER_CLUSTER) {
                         spine_add_to_idle_list.apply();
-                        queue_len_count.write((bit<32>) hdr.falcon.cluster_id, 0); // Reset length mappings
+                        queue_len_count.write((bit<32>) hdr.falcon.pool_id, 0); // Reset length mappings
                         hdr.falcon.pkt_type = PKT_TYPE_QUEUE_REMOVE; // packet to unpair the leaf switches
                         broadcast(); // Send to all downstream links. 
                         // TODO: Instead of broadcast we need to send this to the ones currently in queue list

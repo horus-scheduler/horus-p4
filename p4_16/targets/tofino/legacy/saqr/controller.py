@@ -14,7 +14,7 @@ import numpy as np
 
 DEBUG_DUMP_REGS = False
 
-TEST_VCLUSTER_ID = 0
+TEST_VIRTUAL_POOL_ID = 0
 MAX_VCLUSTER_WORKERS = 32
 INVALID_VALUE_8bit = 0x7F
 INVALID_VALUE_16bit = 0x7FFF
@@ -65,21 +65,21 @@ class LeafController():
         self.register_stat_count_load_signal = bfrt_info.table_get("LeafIngress.stat_count_load_signal")
         self.register_stat_count_task = bfrt_info.table_get("LeafIngress.stat_count_task")
         self.register_ingress_tstamp = bfrt_info.table_get("LeafIngress.ingress_tstamp")
-        self.register_egress_tstamp = bfrt_info.table_get("SaqrEgress.egress_tstamp")
+        self.register_egress_tstamp = bfrt_info.table_get("HorusEgress.egress_tstamp")
 
         # MA Tables
-        self.forward_saqr_switch_dst = bfrt_info.table_get("LeafIngress.forward_saqr_switch_dst")
-        self.forward_saqr_switch_dst.info.key_field_annotation_add("hdr.saqr.dst_id", "wid")
+        self.forward_horus_switch_dst = bfrt_info.table_get("LeafIngress.forward_horus_switch_dst")
+        self.forward_horus_switch_dst.info.key_field_annotation_add("hdr.horus.dst_id", "wid")
         self.set_queue_len_unit = bfrt_info.table_get("LeafIngress.set_queue_len_unit")
-        self.set_queue_len_unit.info.key_field_annotation_add("hdr.saqr.cluster_id", "vcid")
+        self.set_queue_len_unit.info.key_field_annotation_add("hdr.horus.pool_id", "vcid")
         self.get_cluster_num_valid = bfrt_info.table_get("LeafIngress.get_cluster_num_valid")
-        self.get_cluster_num_valid.info.key_field_annotation_add("hdr.saqr.cluster_id", "vcid")
+        self.get_cluster_num_valid.info.key_field_annotation_add("hdr.horus.pool_id", "vcid")
         self.adjust_random_range_ds = bfrt_info.table_get("LeafIngress.adjust_random_range_ds")
-        self.adjust_random_range_ds.info.key_field_annotation_add("saqr_md.cluster_num_valid_ds", "num_valid_ds")
+        self.adjust_random_range_ds.info.key_field_annotation_add("horus_md.cluster_num_valid_ds", "num_valid_ds")
         self.adjust_random_range_us = bfrt_info.table_get("LeafIngress.adjust_random_range_us")
-        self.adjust_random_range_us.info.key_field_annotation_add("saqr_md.cluster_num_valid_us", "num_valid_us")
+        self.adjust_random_range_us.info.key_field_annotation_add("horus_md.cluster_num_valid_us", "num_valid_us")
         self.get_spine_dst_id = bfrt_info.table_get("LeafIngress.get_spine_dst_id")
-        self.get_spine_dst_id.info.key_field_annotation_add("saqr_md.random_id_1", "random_id")
+        self.get_spine_dst_id.info.key_field_annotation_add("horus_md.random_id_1", "random_id")
 
         # HW config tables (Mirror and multicast)
         self.mirror_cfg_table = bfrt_info.table_get("$mirror.cfg")
@@ -214,49 +214,49 @@ class LeafController():
             for i in range(self.num_valid_us_elements): # TODO: Make number of spines dynamic
                 self.get_spine_dst_id.entry_add(
                     self.target,
-                    [self.get_spine_dst_id.make_key([client.KeyTuple('saqr_md.random_id_1', i), client.KeyTuple('hdr.saqr.cluster_id', leaf_id)])],
+                    [self.get_spine_dst_id.make_key([client.KeyTuple('horus_md.random_id_1', i), client.KeyTuple('hdr.horus.pool_id', leaf_id)])],
                     [self.get_spine_dst_id.make_data([client.DataTuple('spine_dst_id', 100)],
                                                  'LeafIngress.act_get_spine_dst_id')]
                 )
 
             print("********* Populating Table Entires *********")
             for wid in self.wid_port_mapping[leaf_id].keys():
-                self.forward_saqr_switch_dst.entry_add(
+                self.forward_horus_switch_dst.entry_add(
                     self.target,
-                    [self.forward_saqr_switch_dst.make_key([client.KeyTuple('hdr.saqr.dst_id', self.workers_start_idx[leaf_id] + wid)])],
-                    [self.forward_saqr_switch_dst.make_data([client.DataTuple('port', self.wid_port_mapping[leaf_id][wid]), client.DataTuple('dst_mac', client.mac_to_bytes(self.port_mac_mapping[self.wid_port_mapping[leaf_id][wid]]))],
-                                                 'LeafIngress.act_forward_saqr')]
+                    [self.forward_horus_switch_dst.make_key([client.KeyTuple('hdr.horus.dst_id', self.workers_start_idx[leaf_id] + wid)])],
+                    [self.forward_horus_switch_dst.make_data([client.DataTuple('port', self.wid_port_mapping[leaf_id][wid]), client.DataTuple('dst_mac', client.mac_to_bytes(self.port_mac_mapping[self.wid_port_mapping[leaf_id][wid]]))],
+                                                 'LeafIngress.act_forward_horus')]
                 )
-                #print("Inserted entries in forward_saqr_switch_dst table with key-values = " + str(self.wid_port_mapping[leaf_id]))
+                #print("Inserted entries in forward_horus_switch_dst table with key-values = " + str(self.wid_port_mapping[leaf_id]))
             
             
             self.get_cluster_num_valid.entry_add(
                 self.target,
-                [self.get_cluster_num_valid.make_key([client.KeyTuple('hdr.saqr.cluster_id', leaf_id)])],
+                [self.get_cluster_num_valid.make_key([client.KeyTuple('hdr.horus.pool_id', leaf_id)])],
                 [self.get_cluster_num_valid.make_data([client.DataTuple('num_ds_elements', self.num_valid_ds_elements[leaf_id]), client.DataTuple('num_us_elements', self.num_valid_us_elements)],
                                              'LeafIngress.act_get_cluster_num_valid')]
             )
             # Insert qlen unit entries
             self.set_queue_len_unit.entry_add(
                     self.target,
-                    [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.saqr.cluster_id', leaf_id)])],
+                    [self.set_queue_len_unit.make_key([client.KeyTuple('hdr.horus.pool_id', leaf_id)])],
                     [self.set_queue_len_unit.make_data([client.DataTuple('cluster_unit', self.qlen_unit[leaf_id])],
                                                  'LeafIngress.act_set_queue_len_unit')]
                 )
 
-        self.forward_saqr_switch_dst.entry_add(
+        self.forward_horus_switch_dst.entry_add(
                 self.target,
-                [self.forward_saqr_switch_dst.make_key([client.KeyTuple('hdr.saqr.dst_id', self.CPU_PORT_ID)])],
-                [self.forward_saqr_switch_dst.make_data([client.DataTuple('port', self.CPU_PORT_ID), client.DataTuple('dst_mac', client.mac_to_bytes(self.port_mac_mapping[self.CPU_PORT_ID]))],
-                                             'LeafIngress.act_forward_saqr')]
+                [self.forward_horus_switch_dst.make_key([client.KeyTuple('hdr.horus.dst_id', self.CPU_PORT_ID)])],
+                [self.forward_horus_switch_dst.make_data([client.DataTuple('port', self.CPU_PORT_ID), client.DataTuple('dst_mac', client.mac_to_bytes(self.port_mac_mapping[self.CPU_PORT_ID]))],
+                                             'LeafIngress.act_forward_horus')]
             )
 
         for sid in self.spine_port_mapping.keys():
-            self.forward_saqr_switch_dst.entry_add(
+            self.forward_horus_switch_dst.entry_add(
                 self.target,
-                [self.forward_saqr_switch_dst.make_key([client.KeyTuple('hdr.saqr.dst_id', sid)])],
-                [self.forward_saqr_switch_dst.make_data([client.DataTuple('port', self.spine_port_mapping[sid]), client.DataTuple('dst_mac', client.mac_to_bytes(self.port_mac_mapping[self.spine_port_mapping[sid]]))],
-                                             'LeafIngress.act_forward_saqr')]
+                [self.forward_horus_switch_dst.make_key([client.KeyTuple('hdr.horus.dst_id', sid)])],
+                [self.forward_horus_switch_dst.make_data([client.DataTuple('port', self.spine_port_mapping[sid]), client.DataTuple('dst_mac', client.mac_to_bytes(self.port_mac_mapping[self.spine_port_mapping[sid]]))],
+                                             'LeafIngress.act_forward_horus')]
             )
             mirror_cfg_bfrt_key  = self.mirror_cfg_table.make_key([client.KeyTuple('$sid', sid)])
             mirror_cfg_bfrt_data = self.mirror_cfg_table.make_data([
@@ -269,58 +269,58 @@ class LeafController():
 
         self.adjust_random_range_ds.entry_add(
                 self.target,
-                [self.adjust_random_range_ds.make_key([client.KeyTuple('saqr_md.cluster_num_valid_ds', 2)])],
+                [self.adjust_random_range_ds.make_key([client.KeyTuple('horus_md.cluster_num_valid_ds', 2)])],
                 [self.adjust_random_range_ds.make_data([], 'LeafIngress.adjust_random_worker_range_1')]
             )
         self.adjust_random_range_ds.entry_add(
                 self.target,
-                [self.adjust_random_range_ds.make_key([client.KeyTuple('saqr_md.cluster_num_valid_ds', 4)])],
+                [self.adjust_random_range_ds.make_key([client.KeyTuple('horus_md.cluster_num_valid_ds', 4)])],
                 [self.adjust_random_range_ds.make_data([], 'LeafIngress.adjust_random_worker_range_2')]
             )
         self.adjust_random_range_ds.entry_add(
                 self.target,
-                [self.adjust_random_range_ds.make_key([client.KeyTuple('saqr_md.cluster_num_valid_ds', 8)])],
+                [self.adjust_random_range_ds.make_key([client.KeyTuple('horus_md.cluster_num_valid_ds', 8)])],
                 [self.adjust_random_range_ds.make_data([], 'LeafIngress.adjust_random_worker_range_3')]
             )
         self.adjust_random_range_ds.entry_add(
                 self.target,
-                [self.adjust_random_range_ds.make_key([client.KeyTuple('saqr_md.cluster_num_valid_ds', 16)])],
+                [self.adjust_random_range_ds.make_key([client.KeyTuple('horus_md.cluster_num_valid_ds', 16)])],
                 [self.adjust_random_range_ds.make_data([], 'LeafIngress.adjust_random_worker_range_4')]
             )
         self.adjust_random_range_ds.entry_add(
                 self.target,
-                [self.adjust_random_range_ds.make_key([client.KeyTuple('saqr_md.cluster_num_valid_ds', 32)])],
+                [self.adjust_random_range_ds.make_key([client.KeyTuple('horus_md.cluster_num_valid_ds', 32)])],
                 [self.adjust_random_range_ds.make_data([], 'LeafIngress.adjust_random_worker_range_5')]
             )
         self.adjust_random_range_ds.entry_add(
                 self.target,
-                [self.adjust_random_range_ds.make_key([client.KeyTuple('saqr_md.cluster_num_valid_ds', 256)])],
+                [self.adjust_random_range_ds.make_key([client.KeyTuple('horus_md.cluster_num_valid_ds', 256)])],
                 [self.adjust_random_range_ds.make_data([], 'LeafIngress.adjust_random_worker_range_8')]
             )
 
         self.adjust_random_range_us.entry_add(
                 self.target,
-                [self.adjust_random_range_us.make_key([client.KeyTuple('saqr_md.cluster_num_valid_us', 2)])],
+                [self.adjust_random_range_us.make_key([client.KeyTuple('horus_md.cluster_num_valid_us', 2)])],
                 [self.adjust_random_range_ds.make_data([], 'LeafIngress.adjust_random_worker_range_1')]
             )
         self.adjust_random_range_us.entry_add(
                 self.target,
-                [self.adjust_random_range_us.make_key([client.KeyTuple('saqr_md.cluster_num_valid_us', 4)])],
+                [self.adjust_random_range_us.make_key([client.KeyTuple('horus_md.cluster_num_valid_us', 4)])],
                 [self.adjust_random_range_us.make_data([], 'LeafIngress.adjust_random_worker_range_2')]
             )
         self.adjust_random_range_us.entry_add(
                 self.target,
-                [self.adjust_random_range_us.make_key([client.KeyTuple('saqr_md.cluster_num_valid_us', 8)])],
+                [self.adjust_random_range_us.make_key([client.KeyTuple('horus_md.cluster_num_valid_us', 8)])],
                 [self.adjust_random_range_us.make_data([], 'LeafIngress.adjust_random_worker_range_3')]
             )
         self.adjust_random_range_us.entry_add(
                 self.target,
-                [self.adjust_random_range_us.make_key([client.KeyTuple('saqr_md.cluster_num_valid_us', 16)])],
+                [self.adjust_random_range_us.make_key([client.KeyTuple('horus_md.cluster_num_valid_us', 16)])],
                 [self.adjust_random_range_us.make_data([], 'LeafIngress.adjust_random_worker_range_4')]
             )
         self.adjust_random_range_us.entry_add(
                 self.target,
-                [self.adjust_random_range_us.make_key([client.KeyTuple('saqr_md.cluster_num_valid_us', 256)])],
+                [self.adjust_random_range_us.make_key([client.KeyTuple('horus_md.cluster_num_valid_us', 256)])],
                 [self.adjust_random_range_us.make_data([], 'LeafIngress.adjust_random_worker_range_8')]
             )
 
@@ -388,7 +388,7 @@ class LeafController():
                 print_reg=False)
                 egress_tstamp = test_register_read(self.target,
                 self.register_egress_tstamp,
-                'SaqrEgress.egress_tstamp.f1',
+                'HorusEgress.egress_tstamp.f1',
                 self.pipe_id,
                 i,
                 print_reg=False)
@@ -426,24 +426,24 @@ class SpineController():
         self.register_egress_tstamp = bfrt_info.table_get("SpineEgress.egress_tstamp")
         
         # # MA Tables
-        self.forward_saqr_switch_dst = bfrt_info.table_get("SpineIngress.forward_saqr_switch_dst")
-        self.forward_saqr_switch_dst.info.key_field_annotation_add("hdr.saqr.dst_id", "id")
+        self.forward_horus_switch_dst = bfrt_info.table_get("SpineIngress.forward_horus_switch_dst")
+        self.forward_horus_switch_dst.info.key_field_annotation_add("hdr.horus.dst_id", "id")
         self.set_queue_len_unit_1 = bfrt_info.table_get("SpineIngress.set_queue_len_unit_1")
-        self.set_queue_len_unit_1.info.key_field_annotation_add("hdr.saqr.cluster_id", "vcid")
+        self.set_queue_len_unit_1.info.key_field_annotation_add("hdr.horus.pool_id", "vcid")
         self.set_queue_len_unit_2 = bfrt_info.table_get("SpineIngress.set_queue_len_unit_2")
-        self.set_queue_len_unit_2.info.key_field_annotation_add("hdr.saqr.cluster_id", "vcid")
+        self.set_queue_len_unit_2.info.key_field_annotation_add("hdr.horus.pool_id", "vcid")
         self.get_cluster_num_valid = bfrt_info.table_get("SpineIngress.get_cluster_num_valid_leafs")
-        self.get_cluster_num_valid.info.key_field_annotation_add("hdr.saqr.cluster_id", "vcid")
+        self.get_cluster_num_valid.info.key_field_annotation_add("hdr.horus.pool_id", "vcid")
         self.adjust_random_range_ds = bfrt_info.table_get("SpineIngress.adjust_random_range_sq_leafs")
-        self.adjust_random_range_ds.info.key_field_annotation_add("saqr_md.cluster_num_valid_queue_signals", "num_valid_ds")
+        self.adjust_random_range_ds.info.key_field_annotation_add("horus_md.cluster_num_valid_queue_signals", "num_valid_ds")
         self.get_rand_leaf_id_1 = bfrt_info.table_get("SpineIngress.get_rand_leaf_id_1")
-        self.get_rand_leaf_id_1.info.key_field_annotation_add("saqr_md.random_ds_index_1", "rand_idx_1")
+        self.get_rand_leaf_id_1.info.key_field_annotation_add("horus_md.random_ds_index_1", "rand_idx_1")
         self.get_rand_leaf_id_2 = bfrt_info.table_get("SpineIngress.get_rand_leaf_id_2")
-        self.get_rand_leaf_id_2.info.key_field_annotation_add("saqr_md.random_ds_index_2", "rand_idx_2")
+        self.get_rand_leaf_id_2.info.key_field_annotation_add("horus_md.random_ds_index_2", "rand_idx_2")
 
     def init_data(self):
         self.pipe_id = 0
-        self.TEST_VCLUSTER_ID = 0
+        self.TEST_VIRTUAL_POOL_ID = 0
         self.MAX_VCLUSTER_LEAVES = 16 # This number is per cluster. *Important: should be the same in p4 code (fixed at compile time)
         self.initial_idle_list = [0, 1, 2, 3]
         
@@ -459,7 +459,7 @@ class SpineController():
         self.intitial_deferred_state = [0] * len(self.initial_idle_list)
         self.num_valid_ds_elements = len(self.initial_idle_list) # num available leaves this vcluster (the number in hardware will be 2^W)
 
-        self.leaf_start_idx = self.TEST_VCLUSTER_ID * self.MAX_VCLUSTER_LEAVES
+        self.leaf_start_idx = self.TEST_VIRTUAL_POOL_ID * self.MAX_VCLUSTER_LEAVES
     
     def set_tables(self):
         # Insert idle_list values (wid of idle workers)
@@ -479,13 +479,13 @@ class SpineController():
         register_write(self.target,
             self.register_idle_count,
             register_name='SpineIngress.idle_count.f1',
-            index=self.TEST_VCLUSTER_ID,
+            index=self.TEST_VIRTUAL_POOL_ID,
             register_value=self.initial_idle_count)
         test_register_read(self.target,
             self.register_idle_count,
             'SpineIngress.idle_count.f1',
             self.pipe_id,
-            self.TEST_VCLUSTER_ID)
+            self.TEST_VIRTUAL_POOL_ID)
         
         
         for i, qlen in enumerate(self.intitial_qlen_state):
@@ -513,68 +513,68 @@ class SpineController():
         # Table entries
         print("********* Populating Table Entires *********")
         for wid in self.wid_port_mapping.keys():
-            self.forward_saqr_switch_dst.entry_add(
+            self.forward_horus_switch_dst.entry_add(
                 self.target,
-                [self.forward_saqr_switch_dst.make_key([client.KeyTuple('hdr.saqr.dst_id', wid)])],
-                [self.forward_saqr_switch_dst.make_data([client.DataTuple('port', self.wid_port_mapping[wid])],
-                                             'SpineIngress.act_forward_saqr')]
+                [self.forward_horus_switch_dst.make_key([client.KeyTuple('hdr.horus.dst_id', wid)])],
+                [self.forward_horus_switch_dst.make_data([client.DataTuple('port', self.wid_port_mapping[wid])],
+                                             'SpineIngress.act_forward_horus')]
             )
         
         for idx, leaf_id in enumerate(self.initial_idle_list):
             self.set_queue_len_unit_1.entry_add(
                 self.target,
-                [self.set_queue_len_unit_1.make_key([client.KeyTuple('saqr_md.random_id_1', leaf_id), client.KeyTuple('hdr.saqr.cluster_id', TEST_VCLUSTER_ID)])],
+                [self.set_queue_len_unit_1.make_key([client.KeyTuple('horus_md.random_id_1', leaf_id), client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID)])],
                 [self.set_queue_len_unit_1.make_data([client.DataTuple('cluster_unit', self.qlen_unit[idx])],
                                              'SpineIngress.act_set_queue_len_unit_1')]
             )
             self.set_queue_len_unit_2.entry_add(
                 self.target,
-                [self.set_queue_len_unit_2.make_key([client.KeyTuple('saqr_md.random_id_2', leaf_id), client.KeyTuple('hdr.saqr.cluster_id', TEST_VCLUSTER_ID)])],
+                [self.set_queue_len_unit_2.make_key([client.KeyTuple('horus_md.random_id_2', leaf_id), client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID)])],
                 [self.set_queue_len_unit_2.make_data([client.DataTuple('cluster_unit', self.qlen_unit[idx])],
                                              'SpineIngress.act_set_queue_len_unit_2')]
             )
             self.get_rand_leaf_id_1.entry_add(
                 self.target,
-                [self.get_rand_leaf_id_1.make_key([client.KeyTuple('saqr_md.random_ds_index_1', idx), client.KeyTuple('hdr.saqr.cluster_id', TEST_VCLUSTER_ID)])],
+                [self.get_rand_leaf_id_1.make_key([client.KeyTuple('horus_md.random_ds_index_1', idx), client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID)])],
                 [self.get_rand_leaf_id_1.make_data([client.DataTuple('leaf_id', leaf_id)],
                                              'SpineIngress.act_get_rand_leaf_id_1')]
             )
             self.get_rand_leaf_id_2.entry_add(
                 self.target,
-                [self.get_rand_leaf_id_2.make_key([client.KeyTuple('saqr_md.random_ds_index_2', idx), client.KeyTuple('hdr.saqr.cluster_id', TEST_VCLUSTER_ID)])],
+                [self.get_rand_leaf_id_2.make_key([client.KeyTuple('horus_md.random_ds_index_2', idx), client.KeyTuple('hdr.horus.pool_id', TEST_VIRTUAL_POOL_ID)])],
                 [self.get_rand_leaf_id_2.make_data([client.DataTuple('leaf_id', leaf_id)],
                                              'SpineIngress.act_get_rand_leaf_id_2')]
             )
 
         self.get_cluster_num_valid.entry_add(
                 self.target,
-                [self.get_cluster_num_valid.make_key([client.KeyTuple('hdr.saqr.cluster_id', self.TEST_VCLUSTER_ID)])],
+                [self.get_cluster_num_valid.make_key([client.KeyTuple('hdr.horus.pool_id', self.TEST_VIRTUAL_POOL_ID)])],
                 [self.get_cluster_num_valid.make_data([client.DataTuple('num_leafs', self.num_valid_ds_elements)],
                                              'SpineIngress.act_get_cluster_num_valid_leafs')]
             )
         self.adjust_random_range_ds.entry_add(
             self.target,
-            [self.adjust_random_range_ds.make_key([client.KeyTuple('saqr_md.cluster_num_valid_queue_signals', 2)])],
+            [self.adjust_random_range_ds.make_key([client.KeyTuple('horus_md.cluster_num_valid_queue_signals', 2)])],
             [self.adjust_random_range_ds.make_data([], 'SpineIngress.adjust_random_leaf_index_1')]
         )
         self.adjust_random_range_ds.entry_add(
             self.target,
-            [self.adjust_random_range_ds.make_key([client.KeyTuple('saqr_md.cluster_num_valid_queue_signals', 4)])],
+            [self.adjust_random_range_ds.make_key([client.KeyTuple('horus_md.cluster_num_valid_queue_signals', 4)])],
             [self.adjust_random_range_ds.make_data([], 'SpineIngress.adjust_random_leaf_index_2')]
         )
         self.adjust_random_range_ds.entry_add(
             self.target,
-            [self.adjust_random_range_ds.make_key([client.KeyTuple('saqr_md.cluster_num_valid_queue_signals', 5)])],
+            [self.adjust_random_range_ds.make_key([client.KeyTuple('horus_md.cluster_num_valid_queue_signals', 5)])],
             [self.adjust_random_range_ds.make_data([], 'SpineIngress.adjust_random_leaf_index_2')]
         )
         self.adjust_random_range_ds.entry_add(
             self.target,
-            [self.adjust_random_range_ds.make_key([client.KeyTuple('saqr_md.cluster_num_valid_queue_signals', 16)])],
+            [self.adjust_random_range_ds.make_key([client.KeyTuple('horus_md.cluster_num_valid_queue_signals', 16)])],
             [self.adjust_random_range_ds.make_data([], 'SpineIngress.adjust_random_leaf_index_4')]
         )
         self.adjust_random_range_ds.entry_add(
             self.target,
-            [self.adjust_random_range_ds.make_key([client.KeyTuple('saqr_md.cluster_num_valid_queue_signals', 256)])],
+            [self.adjust_random_range_ds.make_key([client.KeyTuple('horus_md.cluster_num_valid_queue_signals', 256)])],
             [self.adjust_random_range_ds.make_data([], 'SpineIngress.adjust_random_leaf_index_8')]
         )
 
@@ -604,7 +604,7 @@ class SpineController():
             self.register_stat_count_resub,
             'SpineIngress.stat_count_resub.f1',
             self.pipe_id,
-            TEST_VCLUSTER_ID)
+            TEST_VIRTUAL_POOL_ID)
         print ("Total resubmissions at Spine (Task resub + Idle remove resub): %d" %(resub_tot))
 
         task_tot = test_register_read(self.target,

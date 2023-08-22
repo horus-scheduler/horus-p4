@@ -42,7 +42,7 @@ control LeafIngress(
             Random<bit<16>>() random_worker_id_16;
 
             action get_worker_start_idx () {
-                horus_md.cluster_ds_start_idx = (bit <16>) (hdr.horus.cluster_id * MAX_WORKERS_PER_CLUSTER);
+                horus_md.cluster_ds_start_idx = (bit <16>) (hdr.horus.pool_id * MAX_WORKERS_PER_CLUSTER);
             }
 
             action _drop() {
@@ -70,13 +70,13 @@ control LeafIngress(
             }
             table get_cluster_num_valid {
                 key = {
-                    hdr.horus.cluster_id : exact;
+                    hdr.horus.pool_id : exact;
                 }
                 actions = {
                     act_get_cluster_num_valid;
                     NoAction;
                 }
-                size = HDR_CLUSTER_ID_SIZE;
+                size = HDR_POOL_ID_SIZE;
                 default_action = NoAction;
             }
  

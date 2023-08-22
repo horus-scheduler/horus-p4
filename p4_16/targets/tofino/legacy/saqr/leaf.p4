@@ -5,7 +5,7 @@
 #include "../common/util.p4"
 #include "../headers.p4"
 
-/* Implementation of Saqr Leaf 
+/* Implementation of Horus Leaf 
  * Comments with the tag <TESTBEDONLY> mark the parts of the code that were modified for emulating multiple leaf schedulers using one switch.
  * These lines should be changed for normal operation (instructions for the changes are also provided in the commments)
  * 
@@ -32,8 +32,8 @@
 */
 
 control LeafIngress(
-        inout saqr_header_t hdr,
-        inout saqr_metadata_t saqr_md,
+        inout horus_header_t hdr,
+        inout horus_metadata_t horus_md,
         in ingress_intrinsic_metadata_t ig_intr_md,
         in ingress_intrinsic_metadata_from_parser_t ig_intr_prsr_md,
         inout ingress_intrinsic_metadata_for_deparser_t ig_intr_dprsr_md,
@@ -42,13 +42,13 @@ control LeafIngress(
         /* 
          **** Register definitions ***
          * All of the registers have seperate boundaries for each vcluster. 
-         * We calculate the base/start index for the cluster_id and use the dedicated range for that cluster     
+         * We calculate the base/start index for the pool_id and use the dedicated range for that cluster     
         */ 
             /* idle_list: holds the ID of the idle nodes */
             Register<worker_id_t, _>(MAX_WORKERS_IN_RACK) idle_list;
                 RegisterAction<bit<16>, _, bit<16>>(idle_list) add_to_idle_list = {
                     void apply(inout bit<16> value, out bit<16> rv) {
-                        value = hdr.saqr.src_id;
+                        value = hdr.horus.src_id;
                         rv = value;
                     }
                 };
@@ -96,7 +96,7 @@ control LeafIngress(
             Register<queue_len_t, _>(MAX_WORKERS_IN_RACK) queue_len_list_1; // List of queue lens for all vclusters
                 RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_1) update_queue_len_list_1 = {
                     void apply(inout queue_len_t value, out queue_len_t rv) {
-                        value = saqr_md.selected_ds_qlen;
+                        value = horus_md.selected_ds_qlen;
                         rv = value;
                     }
                 };
@@ -107,7 +107,7 @@ control LeafIngress(
                 };
                  RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_1) write_queue_len_list_1 = {
                     void apply(inout queue_len_t value, out queue_len_t rv) {
-                        value = hdr.saqr.qlen;
+                        value = hdr.horus.qlen;
                         rv = value;
                     }
                 };
@@ -115,7 +115,7 @@ control LeafIngress(
             Register<queue_len_t, _>(MAX_WORKERS_IN_RACK) queue_len_list_2; // List of queue lens for all vclusters
                 RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_2) update_queue_len_list_2 = {
                     void apply(inout queue_len_t value, out queue_len_t rv) {
-                        value = saqr_md.selected_ds_qlen;
+                        value = horus_md.selected_ds_qlen;
                         rv = value;
                     }
                 };
@@ -126,7 +126,7 @@ control LeafIngress(
                 };
                 RegisterAction<queue_len_t, _, queue_len_t>(queue_len_list_2) write_queue_len_list_2 = {
                     void apply(inout queue_len_t value, out queue_len_t rv) {
-                        value = hdr.saqr.qlen;
+                        value = hdr.horus.qlen;
                         rv = value;
                     }
                 };
@@ -141,11 +141,11 @@ control LeafIngress(
             Register<queue_len_t, _>(MAX_WORKERS_IN_RACK) deferred_queue_len_list_1; // List of queue lens for all vclusters
                 RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_1) check_deferred_queue_len_list_1 = {
                     void apply(inout queue_len_t value, out queue_len_t rv) {
-                        if (value <= saqr_md.queue_len_diff) { // Queue len drift is not large enough to invalidate the decision
+                        if (value <= horus_md.queue_len_diff) { // Queue len drift is not large enough to invalidate the decision
                             value = value + 1;
                             rv = 0;
                         } else {
-                            rv = value + saqr_md.selected_ds_qlen; // to avoid using another stage for this calculation
+                            rv = value + horus_md.selected_ds_qlen; // to avoid using another stage for this calculation
                         }
                     }
                 };
@@ -170,7 +170,7 @@ control LeafIngress(
                 };
                 RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_2) read_deferred_queue_len_list_2 = {
                     void apply(inout queue_len_t value, out queue_len_t rv) {
-                        rv = value + saqr_md.not_selected_ds_qlen;
+                        rv = value + horus_md.not_selected_ds_qlen;
                     }
                 };
                  RegisterAction<queue_len_t, _, queue_len_t>(deferred_queue_len_list_2) reset_deferred_queue_len_list_2 = {
@@ -182,16 +182,16 @@ control LeafIngress(
             /* 
              * aggregate_queue_len_list: Maintains the average queue length of workers in rack. 
               This is used for reporting to spine.
-             * In summary, we use saqr_md.queue_len_unit which is the fixed point representation for 1/#workers in rack,
+             * In summary, we use horus_md.queue_len_unit which is the fixed point representation for 1/#workers in rack,
                and use inc/dec to maintain avg. instead of using division or floating point operations.
             */
             Register<queue_len_t, _>(MAX_VCLUSTERS) aggregate_queue_len_list; // One for each vcluster
                 RegisterAction<bit<16>, _, bit<16>>(aggregate_queue_len_list) update_read_aggregate_queue_len = {
                     void apply(inout bit<16> value, out bit<16> rv) {
-                        if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
-                            value = value + saqr_md.queue_len_unit;
+                        if (hdr.horus.pkt_type == PKT_TYPE_NEW_TASK) {
+                            value = value + horus_md.queue_len_unit;
                         } else {
-                            value = value - saqr_md.queue_len_unit;
+                            value = value - horus_md.queue_len_unit;
                         }
                         rv = value;
                     }
@@ -222,13 +222,13 @@ control LeafIngress(
                     void apply(inout bit<16> value, out bit<16> rv) {
                         rv = value;
                         if (value == INVALID_VALUE_16bit){
-                            value = saqr_md.spine_to_link_iq;
+                            value = horus_md.spine_to_link_iq;
                         }
                     }
                 };
                 RegisterAction<bit<16>, _, bit<16>>(linked_iq_sched) update_linked_iq  = {
                     void apply(inout bit<16> value, out bit<16> rv) {    
-                        value = hdr.saqr.src_id;
+                        value = hdr.horus.src_id;
                     }
                 };
             
@@ -243,8 +243,8 @@ control LeafIngress(
                 RegisterAction<bit<16>, _, bit<16>>(linked_sq_sched) read_update_linked_sq  = {
                     void apply(inout bit<16> value, out bit<16> rv) {
                         rv = value;
-                        if (value == INVALID_VALUE_16bit && hdr.saqr.pkt_type == PKT_TYPE_SCAN_QUEUE_SIGNAL) { // Not linked before and new SCAN request arrived
-                            value = hdr.saqr.src_id;
+                        if (value == INVALID_VALUE_16bit && hdr.horus.pkt_type == PKT_TYPE_SCAN_QUEUE_SIGNAL) { // Not linked before and new SCAN request arrived
+                            value = hdr.horus.src_id;
                         }
                     }
                 };
@@ -266,7 +266,7 @@ control LeafIngress(
             Register<bit<16>, _>(MAX_VCLUSTERS) linked_view_drift; 
                 RegisterAction<bit<16>, _, bit<16>>(linked_view_drift) inc_read_linked_view_drift  = {
                     void apply(inout bit<16> value, out bit<16> rv) {
-                        if (value == saqr_md.cluster_num_valid_ds - 1) {
+                        if (value == horus_md.cluster_num_valid_ds - 1) {
                             rv = 0;
                             value = 0;
                         } else {
@@ -279,13 +279,13 @@ control LeafIngress(
             Register<bit<16>, _>(MAX_VCLUSTERS) idle_link_spine_view; 
                 RegisterAction<bit<16>, _, bit<16>>(idle_link_spine_view) write_idle_link_spine_view  = {
                     void apply(inout bit<16> value, out bit<16> rv) {
-                        value = hdr.saqr.qlen;
+                        value = hdr.horus.qlen;
                     }
                 };
                 RegisterAction<bit<16>, _, bit<16>>(idle_link_spine_view) read_idle_link_spine_view  = {
                     void apply(inout bit<16> value, out bit<16> rv) {
                         rv = value;
-                        if (value == 1 && saqr_md.cluster_idle_count == 0){
+                        if (value == 1 && horus_md.cluster_idle_count == 0){
                             value = 0;
                         } else {
                             value = 1;
@@ -327,7 +327,7 @@ control LeafIngress(
             Register<bit<32>, _>(65536) ingress_tstamp; 
             RegisterAction<bit<32>, _, bit<32>>(ingress_tstamp) write_ingress_tstamp  = {
                 void apply(inout bit<32> value, out bit<32> rv) {
-                    value = saqr_md.ingress_tstamp_clipped;
+                    value = horus_md.ingress_tstamp_clipped;
                 }
             };
             
@@ -340,25 +340,25 @@ control LeafIngress(
 
             /* 
              * Calculates the base/start index for the register arrays (qlen_list, deferred_qlen_list, etc.) 
-              based on the cluster_id of the coming packet.
+              based on the pool_id of the coming packet.
             */
             action get_worker_start_idx () {
-                saqr_md.cluster_ds_start_idx = (bit <16>) (hdr.saqr.cluster_id * MAX_WORKERS_PER_CLUSTER);
+                horus_md.cluster_ds_start_idx = (bit <16>) (hdr.horus.pool_id * MAX_WORKERS_PER_CLUSTER);
             }
 
             // Calculates the index of next idle worker in idle_list array. Base index + cluster_idle_count (pointer)
             action get_idle_index () {
-                saqr_md.idle_ds_index = saqr_md.cluster_ds_start_idx + (bit <16>) saqr_md.cluster_idle_count;
+                horus_md.idle_ds_index = horus_md.cluster_ds_start_idx + (bit <16>) horus_md.cluster_idle_count;
             }
 
             // Calculates the mirror dst id based on the actual dst_id and the emulated leaf index (TESTBEDONLY)
             action calc_mirror_dst_id() {
-                saqr_md.mirror_dst_id = hdr.saqr.dst_id + hdr.saqr.cluster_id;
+                horus_md.mirror_dst_id = hdr.horus.dst_id + hdr.horus.pool_id;
             }
 
             // Since pointer points to *next available slot* in idle list. We decrement it when reading an idle node.
             action get_curr_idle_index() {
-                saqr_md.idle_ds_index = saqr_md.idle_ds_index -1;
+                horus_md.idle_ds_index = horus_md.idle_ds_index -1;
             }
 
             action _drop() { // Drop packet.
@@ -366,22 +366,22 @@ control LeafIngress(
             }
 
             /* 
-             * Gets the fixed point representation for (1/#workers) based on the cluster_id 
+             * Gets the fixed point representation for (1/#workers) based on the pool_id 
              * (how many workers belong to this cluster in this rack). 
              * Used for calculating average load.
             */ 
             action act_set_queue_len_unit(len_fixed_point_t cluster_unit) {
-                saqr_md.queue_len_unit = cluster_unit;
+                horus_md.queue_len_unit = cluster_unit;
             }
             table set_queue_len_unit {
                 key = {
-                    hdr.saqr.cluster_id: exact;
+                    hdr.horus.pool_id: exact;
                 }
                 actions = {
                     act_set_queue_len_unit;
                     NoAction;
                 }
-                    size = HDR_CLUSTER_ID_SIZE;
+                    size = HDR_POOL_ID_SIZE;
                     default_action = NoAction;
             }
 
@@ -396,7 +396,7 @@ control LeafIngress(
                 */
                 // Different out ports for level 2 randomly generated
                 // Here we use the same random 16 bit number generated for downstream ID to save resources
-                ig_intr_tm_md.mcast_grp_b = saqr_md.random_id_1; 
+                ig_intr_tm_md.mcast_grp_b = horus_md.random_id_1; 
             }
 
             /* 
@@ -404,18 +404,18 @@ control LeafIngress(
              * In our prototype, we directly use the node ID to assign the port and MAC address.
              * In production, the dst_id can be used as the key for routing tables (another stage).
             */
-            action act_forward_saqr(PortId_t port, mac_addr_t dst_mac) {
+            action act_forward_horus(PortId_t port, mac_addr_t dst_mac) {
                 ig_intr_tm_md.ucast_egress_port = port;
                 hdr.ethernet.dst_addr = dst_mac;
             }
-            table forward_saqr_switch_dst {
+            table forward_horus_switch_dst {
                 key = {
-                    hdr.saqr.dst_id: exact;
+                    hdr.horus.dst_id: exact;
                     // TESTBEDONLY: to diffrentiate ports of virtual leaves
-                    hdr.saqr.cluster_id: exact;
+                    hdr.horus.pool_id: exact;
                 }
                 actions = {
-                    act_forward_saqr;
+                    act_forward_horus;
                     NoAction;
                 }
                 size = 1024;
@@ -428,18 +428,18 @@ control LeafIngress(
               (2) is used for idle linkage to a spine scheduler.
             */
             action act_get_cluster_num_valid(bit<16> num_ds_elements, bit<16> num_us_elements) {
-                saqr_md.cluster_num_valid_ds = num_ds_elements;
-                saqr_md.cluster_num_valid_us = num_us_elements;
+                horus_md.cluster_num_valid_ds = num_ds_elements;
+                horus_md.cluster_num_valid_us = num_us_elements;
             }
             table get_cluster_num_valid {
                 key = {
-                    hdr.saqr.cluster_id : exact;
+                    hdr.horus.pool_id : exact;
                 }
                 actions = {
                     act_get_cluster_num_valid;
                     NoAction;
                 }
-                size = HDR_CLUSTER_ID_SIZE;
+                size = HDR_POOL_ID_SIZE;
                 default_action = NoAction;
             }
 
@@ -447,46 +447,46 @@ control LeafIngress(
              * Since we can't select the random range in runtime, 
               we get() a 16bit random variable and shift it depending on desired range.
              * The table entries are constant and map number of bits to correct shift action
-             * E.g Key: saqr_md.cluster_num_valid_us=16. Action: adjust_random_worker_range_4 (shift 12 bits)
+             * E.g Key: horus_md.cluster_num_valid_us=16. Action: adjust_random_worker_range_4 (shift 12 bits)
             */
             action gen_random_workers_16() { // Random for 65536 Nodes
-                saqr_md.random_id_1 = (bit<16>) random_worker_id_16.get();
-                saqr_md.random_id_2 = (bit<16>) random_worker_id_16.get();
+                horus_md.random_id_1 = (bit<16>) random_worker_id_16.get();
+                horus_md.random_id_2 = (bit<16>) random_worker_id_16.get();
             }
             
             action adjust_random_worker_range_8() { // Random for 256 Nodes
-                saqr_md.random_id_1 = saqr_md.random_id_1 >> 8;
-                saqr_md.random_id_2 = saqr_md.random_id_2 >> 8;
+                horus_md.random_id_1 = horus_md.random_id_1 >> 8;
+                horus_md.random_id_2 = horus_md.random_id_2 >> 8;
             }
 
              action adjust_random_worker_range_5() { // Random for 16 Nodes
-                saqr_md.random_id_1 = saqr_md.random_id_1 >> 11;
-                saqr_md.random_id_2 = saqr_md.random_id_2 >> 11;
+                horus_md.random_id_1 = horus_md.random_id_1 >> 11;
+                horus_md.random_id_2 = horus_md.random_id_2 >> 11;
             }
 
             action adjust_random_worker_range_4() { // Random for 16 Nodes
-                saqr_md.random_id_1 = saqr_md.random_id_1 >> 12;
-                saqr_md.random_id_2 = saqr_md.random_id_2 >> 12;
+                horus_md.random_id_1 = horus_md.random_id_1 >> 12;
+                horus_md.random_id_2 = horus_md.random_id_2 >> 12;
             }
 
             action adjust_random_worker_range_3() { // Random for 8 Nodes
-                saqr_md.random_id_1 = saqr_md.random_id_1 >> 13;
-                saqr_md.random_id_2 = saqr_md.random_id_2 >> 13;
+                horus_md.random_id_1 = horus_md.random_id_1 >> 13;
+                horus_md.random_id_2 = horus_md.random_id_2 >> 13;
             }
 
             action adjust_random_worker_range_2() { // Random for 4 Nodes
-                saqr_md.random_id_1 = saqr_md.random_id_1 >> 14;
-                saqr_md.random_id_2 = saqr_md.random_id_2 >> 14;
+                horus_md.random_id_1 = horus_md.random_id_1 >> 14;
+                horus_md.random_id_2 = horus_md.random_id_2 >> 14;
             }
 
             action adjust_random_worker_range_1() { // Random for 2 Nodes
-                saqr_md.random_id_1 = saqr_md.random_id_1 >> 15;
-                saqr_md.random_id_2 = saqr_md.random_id_2 >> 15;
+                horus_md.random_id_1 = horus_md.random_id_1 >> 15;
+                horus_md.random_id_2 = horus_md.random_id_2 >> 15;
             }
 
             table adjust_random_range_ds { // Reduce the random generated number (16 bit) based on number of workers in rack
                 key = {
-                    saqr_md.cluster_num_valid_ds: exact; 
+                    horus_md.cluster_num_valid_ds: exact; 
                 }
                 actions = {
                     adjust_random_worker_range_8(); // 256 Nodes == 8 bits
@@ -507,7 +507,7 @@ control LeafIngress(
             */
             table adjust_random_range_us { // Reduce the random generated number (16 bit) based on number of workers in rack
                 key = {
-                    saqr_md.cluster_num_valid_us: exact; 
+                    horus_md.cluster_num_valid_us: exact; 
                 }
                 actions = {
                     adjust_random_worker_range_8(); // == 8 bits
@@ -524,16 +524,16 @@ control LeafIngress(
 
             /* 
              * Maps the generated random number to the ID of the spine switch (for idle linkage). 
-             * Sine each vcluster might have different spines we use both random_id_1 and cluster_id as keys.
+             * Sine each vcluster might have different spines we use both random_id_1 and pool_id as keys.
               E.g spine 0 for vcluster X is the spine with ID 100. While spine 0 for vcluster Y is the spine with ID 200. 
             */
             action act_get_spine_dst_id(bit <16> spine_dst_id){
-                saqr_md.spine_to_link_iq = spine_dst_id;
+                horus_md.spine_to_link_iq = spine_dst_id;
             }
             table get_spine_dst_id {
                 key = {
-                    saqr_md.random_id_1: exact;
-                    hdr.saqr.cluster_id: exact;
+                    horus_md.random_id_1: exact;
+                    hdr.horus.pool_id: exact;
                 }
                 actions = {
                     act_get_spine_dst_id();
@@ -544,88 +544,88 @@ control LeafIngress(
             }
 
             action send_pkt_to_cpu() {
-                //hdr.saqr.dst_id = PORT_PCI_CPU; Don't change dst_id, needed by upper-layer (controller logic)
+                //hdr.horus.dst_id = PORT_PCI_CPU; Don't change dst_id, needed by upper-layer (controller logic)
                 ig_intr_tm_md.ucast_egress_port = PORT_PCI_CPU;
             }
 
             /* Add the random generated index with the base index of cluster */ 
             action offset_random_ids() {
-                saqr_md.random_id_1 = saqr_md.random_id_1 + saqr_md.cluster_ds_start_idx;
-                saqr_md.random_id_2 = saqr_md.random_id_2 + saqr_md.cluster_ds_start_idx;
+                horus_md.random_id_1 = horus_md.random_id_1 + horus_md.cluster_ds_start_idx;
+                horus_md.random_id_2 = horus_md.random_id_2 + horus_md.cluster_ds_start_idx;
             }
             
             
             action dec_repeated_rand() { // Used for breaking ties when two randomly generated numbers point to same index
-                saqr_md.random_id_2 = saqr_md.random_id_2-1;
+                horus_md.random_id_2 = horus_md.random_id_2-1;
             }
             action inc_repeated_rand() {
-                saqr_md.random_id_2 = saqr_md.random_id_2+1;
+                horus_md.random_id_2 = horus_md.random_id_2+1;
             }
 
             action compare_queue_len() { // Find min qlen between the sampled qlen values and put result in selected_ds_qlen
-                saqr_md.selected_ds_qlen = min(saqr_md.random_ds_qlen_1, saqr_md.random_ds_qlen_2);
+                horus_md.selected_ds_qlen = min(horus_md.random_ds_qlen_1, horus_md.random_ds_qlen_2);
             }
             
             /* Used in resubmission path for scheduling: 
              Compares the actual/correct qlen (including load and drift) for samples */
             action compare_correct_queue_len() {
-                saqr_md.min_correct_qlen = min(saqr_md.task_resub_hdr.qlen_1, saqr_md.task_resub_hdr.qlen_2);
+                horus_md.min_correct_qlen = min(horus_md.task_resub_hdr.qlen_1, horus_md.task_resub_hdr.qlen_2);
             }
             action get_larger_queue_len() {
-                saqr_md.not_selected_ds_qlen = max(saqr_md.random_ds_qlen_1, saqr_md.random_ds_qlen_2);
+                horus_md.not_selected_ds_qlen = max(horus_md.random_ds_qlen_1, horus_md.random_ds_qlen_2);
             }
             
             action calculate_queue_len_diff(){
-                saqr_md.queue_len_diff = saqr_md.not_selected_ds_qlen - saqr_md.selected_ds_qlen;
+                horus_md.queue_len_diff = horus_md.not_selected_ds_qlen - horus_md.selected_ds_qlen;
             }
             
             apply {
-                if (hdr.saqr.isValid()) {  // saqr packet
+                if (hdr.horus.isValid()) {  // horus packet
                     if (ig_intr_md.resubmit_flag != 0) { // Special case: packet is resubmitted just update the indexes
                         @stage(0){
                             compare_correct_queue_len();
-                            inc_stat_count_resub.execute(hdr.saqr.cluster_id);
+                            inc_stat_count_resub.execute(hdr.horus.pool_id);
                         }
                         @stage(1){
-                            if (saqr_md.min_correct_qlen == saqr_md.task_resub_hdr.qlen_1) {
-                                hdr.saqr.dst_id = saqr_md.task_resub_hdr.ds_index_1;
-                                saqr_md.selected_ds_qlen = saqr_md.task_resub_hdr.qlen_1 + 1;
+                            if (horus_md.min_correct_qlen == horus_md.task_resub_hdr.qlen_1) {
+                                hdr.horus.dst_id = horus_md.task_resub_hdr.ds_index_1;
+                                horus_md.selected_ds_qlen = horus_md.task_resub_hdr.qlen_1 + 1;
                             } else {
-                                hdr.saqr.dst_id = saqr_md.task_resub_hdr.ds_index_2;
-                                saqr_md.selected_ds_qlen = saqr_md.task_resub_hdr.qlen_2 + 1;
+                                hdr.horus.dst_id = horus_md.task_resub_hdr.ds_index_2;
+                                horus_md.selected_ds_qlen = horus_md.task_resub_hdr.qlen_2 + 1;
                             }
                         }
                         @stage(5) {
-                            update_queue_len_list_1.execute(hdr.saqr.dst_id);
-                            update_queue_len_list_2.execute(hdr.saqr.dst_id);
+                            update_queue_len_list_1.execute(hdr.horus.dst_id);
+                            update_queue_len_list_2.execute(hdr.horus.dst_id);
                         }
                         @stage(8) {
-                            reset_deferred_queue_len_list_1.execute(hdr.saqr.dst_id); // Just updated the queue_len_list so write 0 on deferred reg
+                            reset_deferred_queue_len_list_1.execute(hdr.horus.dst_id); // Just updated the queue_len_list so write 0 on deferred reg
                         }
                         @stage(9) {
-                            reset_deferred_queue_len_list_2.execute(hdr.saqr.dst_id);
+                            reset_deferred_queue_len_list_2.execute(hdr.horus.dst_id);
                         }
                     } else {
                         
                         get_worker_start_idx(); // Get start index (base address) for reg arrays for this vcluster
                         set_queue_len_unit.apply(); // Get (1/#workers in this rack) for this cluster (used for avg. calculation)
                         
-                        if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE) {  // worker reply and its IDLE, read increment counter (pointer to idle list)
-                            saqr_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.saqr.cluster_id);
-                        } else if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) { // new task arrives, read decrement counter (cluster_idle_count points to next available slot in list)
-                            saqr_md.cluster_idle_count = read_and_dec_idle_count.execute(hdr.saqr.cluster_id); // Read last idle count for vcluster
-                        } else if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE) { // worker reply but still not idle, we just read the pointer (we use this later to send updates about idle linkage)
-                            saqr_md.cluster_idle_count = read_idle_count.execute(hdr.saqr.cluster_id);
-                        } else if (hdr.saqr.pkt_type == PKT_TYPE_KEEP_ALIVE || hdr.saqr.pkt_type == PKT_TYPE_WORKER_ID_ACK) {
+                        if (hdr.horus.pkt_type == PKT_TYPE_TASK_DONE_IDLE) {  // worker reply and its IDLE, read increment counter (pointer to idle list)
+                            horus_md.cluster_idle_count = read_and_inc_idle_count.execute(hdr.horus.pool_id);
+                        } else if (hdr.horus.pkt_type == PKT_TYPE_NEW_TASK) { // new task arrives, read decrement counter (cluster_idle_count points to next available slot in list)
+                            horus_md.cluster_idle_count = read_and_dec_idle_count.execute(hdr.horus.pool_id); // Read last idle count for vcluster
+                        } else if (hdr.horus.pkt_type == PKT_TYPE_TASK_DONE) { // worker reply but still not idle, we just read the pointer (we use this later to send updates about idle linkage)
+                            horus_md.cluster_idle_count = read_idle_count.execute(hdr.horus.pool_id);
+                        } else if (hdr.horus.pkt_type == PKT_TYPE_KEEP_ALIVE || hdr.horus.pkt_type == PKT_TYPE_WORKER_ID_ACK) {
                             send_pkt_to_cpu();
                         }
 
                         // Lines below are not used in current experiments. 
                         // Useful for removing load linkage in case of failure or dynamic linkage
-                        if (hdr.saqr.pkt_type == PKT_TYPE_QUEUE_REMOVE) { 
-                            remove_linked_sq.execute(hdr.saqr.cluster_id); 
+                        if (hdr.horus.pkt_type == PKT_TYPE_QUEUE_REMOVE) { 
+                            remove_linked_sq.execute(hdr.horus.pool_id); 
                         } else {
-                            saqr_md.linked_sq_id = read_update_linked_sq.execute(hdr.saqr.cluster_id); // Get ID of the Spine that the leaf reports to   
+                            horus_md.linked_sq_id = read_update_linked_sq.execute(hdr.horus.pool_id); // Get ID of the Spine that the leaf reports to   
                         }
 
                         
@@ -635,17 +635,17 @@ control LeafIngress(
                             get_idle_index(); // Adds the base index to the pointer for idle list
                             get_cluster_num_valid.apply(); // Get number of workers in rack for this vcluster (used for adjusting random samples) 
                             gen_random_workers_16(); // Generate a 16 bit random number
-                            if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE || hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
-                                saqr_md.aggregate_queue_len = update_read_aggregate_queue_len.execute(hdr.saqr.cluster_id);
+                            if (hdr.horus.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.horus.pkt_type == PKT_TYPE_TASK_DONE || hdr.horus.pkt_type == PKT_TYPE_NEW_TASK) {
+                                horus_md.aggregate_queue_len = update_read_aggregate_queue_len.execute(hdr.horus.pool_id);
                             } 
-                            saqr_md.ingress_tstamp_clipped = (bit<32>)ig_intr_md.ingress_mac_tstamp[31:0];
+                            horus_md.ingress_tstamp_clipped = (bit<32>)ig_intr_md.ingress_mac_tstamp[31:0];
                         }
                         
                         @stage(2) {
                             calc_mirror_dst_id(); // We want the original pkt to reach its destination (done later by mirroring the orignial pkt)
-                            saqr_md.received_dst_id = hdr.saqr.dst_id; //  Keep received dst_id so that we can swap src_id dst_id to reply to other switches
-                            if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK){
-                                saqr_md.task_counter = inc_stat_count_task.execute(0);
+                            horus_md.received_dst_id = hdr.horus.dst_id; //  Keep received dst_id so that we can swap src_id dst_id to reply to other switches
+                            if (hdr.horus.pkt_type == PKT_TYPE_NEW_TASK){
+                                horus_md.task_counter = inc_stat_count_task.execute(0);
                                 get_curr_idle_index(); // decrement the pointer so we read the correct idle worker id
                                 adjust_random_range_ds.apply(); // shift the random indexes to be in range of num workers in rack
                             } else {
@@ -654,19 +654,19 @@ control LeafIngress(
                         } 
                          
                         @stage(3) {
-                            if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE) { 
+                            if (hdr.horus.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.horus.pkt_type == PKT_TYPE_TASK_DONE) { 
                                 get_spine_dst_id.apply(); // Convert the random spine index (vcluster-based) to a global spine switch ID
-                                if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE){ 
-                                    add_to_idle_list.execute(saqr_md.idle_ds_index); // If worker reply and its idle, add it to idle list
+                                if (hdr.horus.pkt_type == PKT_TYPE_TASK_DONE_IDLE){ 
+                                    add_to_idle_list.execute(horus_md.idle_ds_index); // If worker reply and its idle, add it to idle list
                                 }
                                 
-                            } else if(hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
-                                write_ingress_tstamp.execute(hdr.saqr.seq_num);
-                                if (saqr_md.cluster_idle_count > 0) { // If a new task arrives and idle workers available read idle_list to get ID of idle worker
-                                    saqr_md.idle_ds_id = read_idle_list.execute(saqr_md.idle_ds_index); 
+                            } else if(hdr.horus.pkt_type == PKT_TYPE_NEW_TASK) {
+                                write_ingress_tstamp.execute(hdr.horus.task_id);
+                                if (horus_md.cluster_idle_count > 0) { // If a new task arrives and idle workers available read idle_list to get ID of idle worker
+                                    horus_md.idle_ds_id = read_idle_list.execute(horus_md.idle_ds_index); 
                                 } else {
-                                    if(saqr_md.random_id_1 == saqr_md.random_id_2) { 
-                                        if (saqr_md.random_id_2 == 0){ // Break ties in case two random numbers point to same index
+                                    if(horus_md.random_id_1 == horus_md.random_id_2) { 
+                                        if (horus_md.random_id_2 == 0){ // Break ties in case two random numbers point to same index
                                             inc_repeated_rand();
                                         } else {
                                             dec_repeated_rand();
@@ -677,16 +677,16 @@ control LeafIngress(
                         }
                         
                         @stage(4) { 
-                            if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK && saqr_md.cluster_idle_count==0){
+                            if (hdr.horus.pkt_type == PKT_TYPE_NEW_TASK && horus_md.cluster_idle_count==0){
                                 offset_random_ids(); // sum up the random numbers with base index to access the load list indices belonging to this vcluster
                             }
                         }
 
                         @stage(5) {
-                            if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
+                            if (hdr.horus.pkt_type == PKT_TYPE_NEW_TASK) {
                                 // Read two qlen values from list
-                                saqr_md.random_ds_qlen_1 = read_queue_len_list_1.execute(saqr_md.random_id_1);
-                                saqr_md.random_ds_qlen_2 = read_queue_len_list_2.execute(saqr_md.random_id_2);
+                                horus_md.random_ds_qlen_1 = read_queue_len_list_1.execute(horus_md.random_id_1);
+                                horus_md.random_ds_qlen_2 = read_queue_len_list_2.execute(horus_md.random_id_2);
                                 
                                 /* Here we check whether the spine that send us this task, thinks we are idle or not!
                                  * This is useful to detect if an idle add or idle remove procedure was not succesfull.
@@ -694,58 +694,58 @@ control LeafIngress(
                                  * If spine selected this rack based on idle assignment, it sets qlen field to 1
                                  * Otherwise, it sets qlen to 0.
                                 */
-                                if (hdr.saqr.qlen == 1) { // Spine thinks this rack is idle so update the idle linkage (leaf is still linked)
-                                    update_linked_iq.execute(hdr.saqr.cluster_id);
-                                } else if (hdr.saqr.qlen == 0 && saqr_md.cluster_idle_count > 1) { // Spine thinks rack is not idle but there are idle workers so we reset idle link
-                                    reset_linked_iq.execute(hdr.saqr.cluster_id);
+                                if (hdr.horus.qlen == 1) { // Spine thinks this rack is idle so update the idle linkage (leaf is still linked)
+                                    update_linked_iq.execute(hdr.horus.pool_id);
+                                } else if (hdr.horus.qlen == 0 && horus_md.cluster_idle_count > 1) { // Spine thinks rack is not idle but there are idle workers so we reset idle link
+                                    reset_linked_iq.execute(hdr.horus.pool_id);
                                 }
-                            } else if(hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE || hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE) {
-                                write_queue_len_list_1.execute(hdr.saqr.src_id); // Reply pkts contain the latest qlen of workers, so update the load lists
-                                write_queue_len_list_2.execute(hdr.saqr.src_id);
-                                if (saqr_md.cluster_idle_count > 1) { 
+                            } else if(hdr.horus.pkt_type == PKT_TYPE_TASK_DONE || hdr.horus.pkt_type == PKT_TYPE_TASK_DONE_IDLE) {
+                                write_queue_len_list_1.execute(hdr.horus.src_id); // Reply pkts contain the latest qlen of workers, so update the load lists
+                                write_queue_len_list_2.execute(hdr.horus.src_id);
+                                if (horus_md.cluster_idle_count > 1) { 
                                     // If there are idle workers available, leaf tries to initiate idle linkage:
                                     // Checks whether leaf is already linked with a spine, if not writes the new linkage (we send an idleAdd in next stage to this spine)
-                                    saqr_md.idle_link = write_linked_iq.execute(hdr.saqr.cluster_id);
-                                } else if (saqr_md.cluster_idle_count <= 1) {
+                                    horus_md.idle_link = write_linked_iq.execute(hdr.horus.pool_id);
+                                } else if (horus_md.cluster_idle_count <= 1) {
                                     // If the idle workers are not available, reset the linkage (read previous value so that we send idleRemove in next stage)
-                                    saqr_md.idle_link = reset_linked_iq.execute(hdr.saqr.cluster_id); 
+                                    horus_md.idle_link = reset_linked_iq.execute(hdr.horus.pool_id); 
                                 } 
                             }  
                         }
 
                         @stage(6) {
-                            if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
+                            if (hdr.horus.pkt_type == PKT_TYPE_NEW_TASK) {
                                 compare_queue_len(); // Compare the sampled qlen values (for pow-of-two)
                                 get_larger_queue_len(); 
-                            } else if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE || hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE) { // Received a reply from worker and rack is not idle (removed the idle link)
-                                if (saqr_md.cluster_idle_count <= 1) { // Breaking the linkage
-                                    if (saqr_md.idle_link != INVALID_VALUE_16bit) { // Send a IDLE_REMOVE packet to the linked spine, mirror original reply to client
-                                        hdr.saqr.dst_id = saqr_md.idle_link; // Send idle remove packet to the linked spine
+                            } else if (hdr.horus.pkt_type == PKT_TYPE_TASK_DONE || hdr.horus.pkt_type == PKT_TYPE_TASK_DONE_IDLE) { // Received a reply from worker and rack is not idle (removed the idle link)
+                                if (horus_md.cluster_idle_count <= 1) { // Breaking the linkage
+                                    if (horus_md.idle_link != INVALID_VALUE_16bit) { // Send a IDLE_REMOVE packet to the linked spine, mirror original reply to client
+                                        hdr.horus.dst_id = horus_md.idle_link; // Send idle remove packet to the linked spine
                                         /* 
                                          * TESTBEDONLY: Here we should set the ID of the leaf switch as src_id, 
                                           but in our experimetns we used cluster_ids to diffrentiate the emulated leaf switches.
-                                          So we use the cluster_id when sending reply to spine. 
+                                          So we use the pool_id when sending reply to spine. 
                                           In real world it should be a constant SWITCH_ID. 
                                         */
-                                        //hdr.saqr.src_id = SWITCH_ID; 
-                                        hdr.saqr.src_id = hdr.saqr.cluster_id; 
-                                        hdr.saqr.pkt_type = PKT_TYPE_IDLE_REMOVE;
-                                        inc_stat_count_idle_signal.execute(hdr.saqr.cluster_id);
+                                        //hdr.horus.src_id = SWITCH_ID; 
+                                        hdr.horus.src_id = hdr.horus.pool_id; 
+                                        hdr.horus.pkt_type = PKT_TYPE_IDLE_REMOVE;
+                                        inc_stat_count_idle_signal.execute(hdr.horus.pool_id);
                                         ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE;
                                     }
                                 } else {
-                                    if(saqr_md.idle_link == INVALID_VALUE_16bit) { // Send IDLE_SIGNAL to the linked leaf if previously not linked with a spine
+                                    if(horus_md.idle_link == INVALID_VALUE_16bit) { // Send IDLE_SIGNAL to the linked leaf if previously not linked with a spine
                                         /* 
                                          * TESTBEDONLY: Here we should set the ID of the leaf switch as src_id, 
                                           but in our experimetns we used cluster_ids to diffrentiate the emulated leaf switches.
-                                          So we use the cluster_id when sending reply to spine. 
+                                          So we use the pool_id when sending reply to spine. 
                                           In real world it should be a constant SWITCH_ID. 
                                         */
-                                        hdr.saqr.dst_id = saqr_md.spine_to_link_iq;
-                                        //hdr.saqr.src_id = SWITCH_ID; 
-                                        hdr.saqr.src_id = hdr.saqr.cluster_id; // Only for the virtual leaf in testbed experimetns TODO: Constant value switch id for the production
-                                        hdr.saqr.pkt_type = PKT_TYPE_IDLE_SIGNAL; // Now change to idle signal to notify the selected spine
-                                        inc_stat_count_idle_signal.execute(hdr.saqr.cluster_id);
+                                        hdr.horus.dst_id = horus_md.spine_to_link_iq;
+                                        //hdr.horus.src_id = SWITCH_ID; 
+                                        hdr.horus.src_id = hdr.horus.pool_id; // Only for the virtual leaf in testbed experimetns TODO: Constant value switch id for the production
+                                        hdr.horus.pkt_type = PKT_TYPE_IDLE_SIGNAL; // Now change to idle signal to notify the selected spine
+                                        inc_stat_count_idle_signal.execute(hdr.horus.pool_id);
                                         ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE;
                                     }
                                 }
@@ -754,70 +754,70 @@ control LeafIngress(
 
                         @stage(7) {
                             calculate_queue_len_diff();
-                            if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
-                                if (saqr_md.cluster_idle_count == 0) {
-                                    if (saqr_md.selected_ds_qlen == saqr_md.random_ds_qlen_1) { // If minimum qlen belongs to our first sample
-                                        hdr.saqr.dst_id = saqr_md.random_id_1; // Set dst_id to id of first sample
+                            if (hdr.horus.pkt_type == PKT_TYPE_NEW_TASK) {
+                                if (horus_md.cluster_idle_count == 0) {
+                                    if (horus_md.selected_ds_qlen == horus_md.random_ds_qlen_1) { // If minimum qlen belongs to our first sample
+                                        hdr.horus.dst_id = horus_md.random_id_1; // Set dst_id to id of first sample
                                         // line below is used in case of resubmission, we always keep the id of *not selected* in task_resub_hdr.ds_index_2
-                                        saqr_md.task_resub_hdr.ds_index_2 = saqr_md.random_id_2; 
+                                        horus_md.task_resub_hdr.ds_index_2 = horus_md.random_id_2; 
                                     } else { // If minimum qlen belongs to our second sample
-                                        hdr.saqr.dst_id = saqr_md.random_id_2;
-                                        saqr_md.task_resub_hdr.ds_index_2 = saqr_md.random_id_1;
+                                        hdr.horus.dst_id = horus_md.random_id_2;
+                                        horus_md.task_resub_hdr.ds_index_2 = horus_md.random_id_1;
                                     }
                                 } else { // If idle workers available dst_id is the one we read from idle_list
-                                    hdr.saqr.dst_id = saqr_md.idle_ds_id;
+                                    hdr.horus.dst_id = horus_md.idle_ds_id;
                                 }
-                            } else if (hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.saqr.pkt_type == PKT_TYPE_TASK_DONE) {
-                                saqr_md.spine_view_ok = inc_read_linked_view_drift.execute(hdr.saqr.cluster_id); // Check if drift of load of the spine is larger than threshold
+                            } else if (hdr.horus.pkt_type == PKT_TYPE_TASK_DONE_IDLE || hdr.horus.pkt_type == PKT_TYPE_TASK_DONE) {
+                                horus_md.spine_view_ok = inc_read_linked_view_drift.execute(hdr.horus.pool_id); // Check if drift of load of the spine is larger than threshold
                             } 
                         }
 
                         @stage(8) {
-                            if (hdr.saqr.pkt_type==PKT_TYPE_TASK_DONE_IDLE || hdr.saqr.pkt_type==PKT_TYPE_TASK_DONE){
-                                reset_deferred_queue_len_list_1.execute(hdr.saqr.src_id); // Just updated the queue_len_list so write 0 on deferred qlen reg (aka. drift)
+                            if (hdr.horus.pkt_type==PKT_TYPE_TASK_DONE_IDLE || hdr.horus.pkt_type==PKT_TYPE_TASK_DONE){
+                                reset_deferred_queue_len_list_1.execute(hdr.horus.src_id); // Just updated the queue_len_list so write 0 on deferred qlen reg (aka. drift)
 
-                            } else if(hdr.saqr.pkt_type==PKT_TYPE_NEW_TASK && saqr_md.cluster_idle_count == 0) {
-                                if (saqr_md.random_id_2 != saqr_md.random_id_1) {
+                            } else if(hdr.horus.pkt_type==PKT_TYPE_NEW_TASK && horus_md.cluster_idle_count == 0) {
+                                if (horus_md.random_id_2 != horus_md.random_id_1) {
                                     // Action below Returns QL[dst_id] + Deferred[dst_id] if resubmission needed o.t it will return 0
                                     // task_resub_hdr.qlen_1  will contain the complete load info about the node we initially selected
                                     // and its used in resub path
-                                    saqr_md.task_resub_hdr.qlen_1 = check_deferred_queue_len_list_1.execute(hdr.saqr.dst_id); 
+                                    horus_md.task_resub_hdr.qlen_1 = check_deferred_queue_len_list_1.execute(hdr.horus.dst_id); 
                                     // keep the ID of selected dst in ds_index_1
-                                    saqr_md.task_resub_hdr.ds_index_1 = hdr.saqr.dst_id;
+                                    horus_md.task_resub_hdr.ds_index_1 = hdr.horus.dst_id;
                                 } else { // In case two samples point to the same cell, we do not need to resubmit just increment deferred list
-                                    inc_deferred_queue_len_list_1.execute(hdr.saqr.dst_id);
+                                    inc_deferred_queue_len_list_1.execute(hdr.horus.dst_id);
                                 }
                             }
                         }
                         @stage(9){
-                            if (hdr.saqr.pkt_type==PKT_TYPE_TASK_DONE_IDLE || hdr.saqr.pkt_type==PKT_TYPE_TASK_DONE) {
-                                reset_deferred_queue_len_list_2.execute(hdr.saqr.src_id); // Just updated the queue_len_list so write 0 on deferred reg
-                                if (saqr_md.spine_view_ok == 0) { // Need to send a new load signal to spine 
+                            if (hdr.horus.pkt_type==PKT_TYPE_TASK_DONE_IDLE || hdr.horus.pkt_type==PKT_TYPE_TASK_DONE) {
+                                reset_deferred_queue_len_list_2.execute(hdr.horus.src_id); // Just updated the queue_len_list so write 0 on deferred reg
+                                if (horus_md.spine_view_ok == 0) { // Need to send a new load signal to spine 
                                     /* 
                                     Desired behaviour: Mirror premitive (emit invoked in ingrdeparser) will send the original reply to the client
                                     Here we modify the packet and send it as a ctrl pkt to the linked spine.
                                     */
-                                    hdr.saqr.pkt_type = PKT_TYPE_QUEUE_SIGNAL;
+                                    hdr.horus.pkt_type = PKT_TYPE_QUEUE_SIGNAL;
                                     /* 
                                      * TESTBEDONLY: Here we should set the ID of the leaf switch as src_id, 
                                       but in our experimetns we used cluster_ids to diffrentiate the emulated leaf switches.
-                                      So we use the cluster_id when sending reply to spine. 
+                                      So we use the pool_id when sending reply to spine. 
                                       In real world it should be a constant SWITCH_ID. 
                                     */
-                                    //hdr.saqr.src_id = SWITCH_ID; 
-                                    hdr.saqr.src_id = hdr.saqr.cluster_id; 
-                                    hdr.saqr.qlen = saqr_md.aggregate_queue_len;
-                                    inc_stat_count_load_signal.execute(hdr.saqr.cluster_id);
-                                    hdr.saqr.dst_id = saqr_md.linked_sq_id;
+                                    //hdr.horus.src_id = SWITCH_ID; 
+                                    hdr.horus.src_id = hdr.horus.pool_id; 
+                                    hdr.horus.qlen = horus_md.aggregate_queue_len;
+                                    inc_stat_count_load_signal.execute(hdr.horus.pool_id);
+                                    hdr.horus.dst_id = horus_md.linked_sq_id;
                                     ig_intr_dprsr_md.mirror_type = MIRROR_TYPE_WORKER_RESPONSE; 
                                 }
-                            } else if(hdr.saqr.pkt_type==PKT_TYPE_NEW_TASK) {
-                                if (saqr_md.cluster_idle_count == 0){
-                                    if(saqr_md.task_resub_hdr.qlen_1 == 0) { // This return value means that we do not need to check deffered qlens, difference between samples were larger than drift so our decision is still valid
-                                        inc_deferred_queue_len_list_2.execute(hdr.saqr.dst_id); // increment the second copy to be consistent with first one
+                            } else if(hdr.horus.pkt_type==PKT_TYPE_NEW_TASK) {
+                                if (horus_md.cluster_idle_count == 0){
+                                    if(horus_md.task_resub_hdr.qlen_1 == 0) { // This return value means that we do not need to check deffered qlens, difference between samples were larger than drift so our decision is still valid
+                                        inc_deferred_queue_len_list_2.execute(hdr.horus.dst_id); // increment the second copy to be consistent with first one
                                     } else { // our decision might be invalid, need to check the deffered queue lens for the sample that was greater (not_selected) and resubmit
                                         ig_intr_dprsr_md.resubmit_type = RESUBMIT_TYPE_NEW_TASK;
-                                        saqr_md.task_resub_hdr.qlen_2 = read_deferred_queue_len_list_2.execute(saqr_md.task_resub_hdr.ds_index_2);
+                                        horus_md.task_resub_hdr.qlen_2 = read_deferred_queue_len_list_2.execute(horus_md.task_resub_hdr.ds_index_2);
                                     }
                                 } else { // If there were idle workers avilable, we poped that worker from the idle list. 
                                     /* 
@@ -827,13 +827,13 @@ control LeafIngress(
                                      * recieved one packet with qlen==1 before. 
                                      * This ensures that idle list of leaf stays unique: one worker will be added only if it was previously removed. 
                                      */
-                                    hdr.saqr.qlen = 1;
+                                    hdr.horus.qlen = 1;
                                 }
                             } 
                         }
                     }
-                    if (hdr.saqr.pkt_type != PKT_TYPE_WORKER_ID_ACK && hdr.saqr.pkt_type != PKT_TYPE_KEEP_ALIVE){
-                        forward_saqr_switch_dst.apply(); // Forwarding tables...     
+                    if (hdr.horus.pkt_type != PKT_TYPE_WORKER_ID_ACK && hdr.horus.pkt_type != PKT_TYPE_KEEP_ALIVE){
+                        forward_horus_switch_dst.apply(); // Forwarding tables...     
                     }
                     
                 }  else if (hdr.ipv4.isValid()) { // Regular switching procedure
@@ -847,8 +847,8 @@ control LeafIngress(
 
 control LeafIngressDeparser(
         packet_out pkt,
-        inout saqr_header_t hdr,
-        in saqr_metadata_t saqr_md,
+        inout horus_header_t hdr,
+        in horus_metadata_t horus_md,
         in ingress_intrinsic_metadata_for_deparser_t ig_intr_dprsr_md) {
          
     Mirror() mirror;
@@ -863,26 +863,26 @@ control LeafIngressDeparser(
              In summary: this should replicate the initial received packet *Before any modifications* to the configured ports.
              Here we are using the dst_id as mirror Session ID
              Control plane needs to add mapping between session ID (we use dst_id aas key) and 
-             output port (value) (same table as saqr forward in ingress)
+             output port (value) (same table as horus forward in ingress)
             */
             // TODO: Bug Report to community. emit() should support single argument call when no header is needed. 
             // But gets compiler internal error! So we add {} (empty mirror hdr)
-            mirror.emit<empty_t>((MirrorId_t) saqr_md.mirror_dst_id, {}); 
+            mirror.emit<empty_t>((MirrorId_t) horus_md.mirror_dst_id, {}); 
         }  
         if (ig_intr_dprsr_md.resubmit_type == RESUBMIT_TYPE_NEW_TASK) { // Resubmit triggered for schedling a task
-            resubmit.emit(saqr_md.task_resub_hdr);
+            resubmit.emit(horus_md.task_resub_hdr);
         }
         pkt.emit(hdr.ethernet);
         pkt.emit(hdr.ipv4);
         pkt.emit(hdr.udp);
-        pkt.emit(hdr.saqr);
+        pkt.emit(hdr.horus);
     }
 }
 
 // Empty egress parser/control blocks
-parser SaqrEgressParser(
+parser HorusEgressParser(
         packet_in pkt,
-        out saqr_header_t hdr,
+        out horus_header_t hdr,
         out eg_metadata_t eg_md,
         out egress_intrinsic_metadata_t eg_intr_md) {
     state start {
@@ -890,26 +890,26 @@ parser SaqrEgressParser(
         pkt.extract(hdr.ethernet);
         pkt.extract(hdr.ipv4);
         pkt.extract(hdr.udp);
-        pkt.extract(hdr.saqr);
+        pkt.extract(hdr.horus);
         transition accept;
     }
 }
 
-control SaqrEgressDeparser(
+control HorusEgressDeparser(
         packet_out pkt,
-        inout saqr_header_t hdr,
+        inout horus_header_t hdr,
         in eg_metadata_t eg_md,
         in egress_intrinsic_metadata_for_deparser_t ig_intr_dprs_md) {
     apply {
         pkt.emit(hdr.ethernet);
         pkt.emit(hdr.ipv4);
         pkt.emit(hdr.udp);
-        pkt.emit(hdr.saqr);
+        pkt.emit(hdr.horus);
     }
 }
 
-control SaqrEgress(
-        inout saqr_header_t hdr,
+control HorusEgress(
+        inout horus_header_t hdr,
         inout eg_metadata_t eg_md,
         in egress_intrinsic_metadata_t eg_intr_md,
         in egress_intrinsic_metadata_from_parser_t eg_intr_md_from_prsr,
@@ -930,10 +930,10 @@ control SaqrEgress(
     };
 
     apply {
-        if (hdr.saqr.pkt_type == PKT_TYPE_NEW_TASK) {
+        if (hdr.horus.pkt_type == PKT_TYPE_NEW_TASK) {
             eg_md.task_counter = inc_stat_count_task.execute(0);
             eg_md.egress_tstamp_clipped = (bit<32>)eg_intr_md_from_prsr.global_tstamp[31:0];
-            write_egress_tstamp.execute(hdr.saqr.seq_num);
+            write_egress_tstamp.execute(hdr.horus.task_id);
         }
     }
 }
