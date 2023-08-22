@@ -84,7 +84,7 @@ header faclon_t {
     bit<16> src_id; // workerID for ToRs. ToRID for spines.
     bit<16> dst_id;
     bit<8> qlen; // Also used for reporting length of idle list (from spine sw to leaf sw)
-    bit<HDR_SEQ_NUM_SIZE> seq_num;   
+    bit<HDR_TASK_ID_SIZE> task_id;   
 }
 
 struct headers {

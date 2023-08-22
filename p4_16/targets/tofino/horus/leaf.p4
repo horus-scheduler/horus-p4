@@ -704,7 +704,7 @@ control LeafIngress(
                                 }
                                 
                             } else if(hdr.horus.pkt_type == PKT_TYPE_NEW_TASK) {
-                                write_ingress_tstamp.execute(hdr.horus.seq_num);
+                                write_ingress_tstamp.execute(hdr.horus.task_id);
                                 if (hdr.horus.qlen == 1) { // Spine thinks this leaf is idle
                                     horus_md.backoff_counter1 = inc_read_backoff1.execute(hdr.horus.cluster_id);
                                     
@@ -989,7 +989,7 @@ control HorusEgress(
         if (hdr.horus.pkt_type == PKT_TYPE_NEW_TASK) {
             eg_md.task_counter = inc_stat_count_task.execute(0);
             eg_md.egress_tstamp_clipped = (bit<32>)eg_intr_md_from_prsr.global_tstamp[31:0];
-            write_egress_tstamp.execute(hdr.horus.seq_num);
+            write_egress_tstamp.execute(hdr.horus.task_id);
         }
     }
 }

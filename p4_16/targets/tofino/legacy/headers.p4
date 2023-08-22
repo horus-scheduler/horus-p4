@@ -30,7 +30,7 @@
 #define HDR_CLUSTER_ID_SIZE 16
 #define HDR_SRC_ID_SIZE 16
 #define HDR_QUEUE_LEN_SIZE 16
-#define HDR_SEQ_NUM_SIZE 16
+#define HDR_TASK_ID_SIZE 16
 #define HDR_saqr_RAND_GROUP_SIZE 8
 #define HDR_saqr_DST_SIZE 8
 
@@ -78,7 +78,7 @@ header saqr_h {
     bit<16> src_id;                 // workerID for ToRs. ToRID for spines.
     bit<16> dst_id;
     bit<HDR_QUEUE_LEN_SIZE> qlen;   // Also used for reporting length of idle list (from spine sw to leaf sw) and indicating the decision type for a scheduled task (Idle selection or not)
-    bit<HDR_SEQ_NUM_SIZE> seq_num;   
+    bit<HDR_TASK_ID_SIZE> task_id;   
 }
 
 struct saqr_header_t {

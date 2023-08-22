@@ -326,8 +326,8 @@ class TestFalconLeaf(BfRuntimeTest):
             dst_id = 100 # this will be identifier for client (receiving reply pkt)
             src_id = spine_port_mapping.keys()[0]
             ig_port = spine_port_mapping[src_id]
-            scan_queue_pkt = make_falcon_scan_queue_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, seq_num=0x10+i, **eth_kwargs)
-            expected_pkt = make_falcon_queue_signal_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=src_id, seq_num=0x10+i, is_init=True, **eth_kwargs)
+            scan_queue_pkt = make_falcon_scan_queue_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, task_id=0x10+i, **eth_kwargs)
+            expected_pkt = make_falcon_queue_signal_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=src_id, task_id=0x10+i, is_init=True, **eth_kwargs)
             logger.info("Sending packet on port %d", ig_port)
             testutils.send_packet(self, ig_port, scan_queue_pkt)
             logger.info(" Verifying expected QUEUE_SIGNAL_INIT on port %d", ig_port)
@@ -342,7 +342,7 @@ class TestFalconLeaf(BfRuntimeTest):
                 TEST_VCLUSTER_ID, 
                 src_id)
             for i in range(num_task_done):
-                task_done_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=4, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+                task_done_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=4, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
                 
                 logger.info("\n********* Sending TASK_DONE packet from a worker *********")
                 testutils.send_packet(self, ig_port, task_done_packet)
@@ -356,7 +356,7 @@ class TestFalconLeaf(BfRuntimeTest):
                     print(poll_res)
 
             logger.info("\n********* Sending QUEUE_REMOVE packet from the linked spine *********")
-            queue_remove_pkt = make_falcon_queue_remove_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, seq_num=0x10+i, **eth_kwargs)
+            queue_remove_pkt = make_falcon_queue_remove_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, task_id=0x10+i, **eth_kwargs)
             testutils.send_packet(self, ig_port, queue_remove_pkt)
             poll_res = testutils.dp_poll(self)
 
@@ -368,7 +368,7 @@ class TestFalconLeaf(BfRuntimeTest):
                 TEST_VCLUSTER_ID, 
                 INVALID_VALUE_16bit)
             for i in range(4):
-                task_done_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=4, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+                task_done_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=4, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
                 
                 logger.info("\n********* After unlink: Sending TASK_DONE packet from worker  *********")
                 testutils.send_packet(self, ig_port, task_done_packet)
@@ -555,9 +555,9 @@ class TestFalconLeaf(BfRuntimeTest):
         src_id = wid_port_mapping.keys()[i]
         ig_port = wid_port_mapping[src_id]
 
-        task_done_idle_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, q_len=i, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
-        expected_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, q_len=i, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
-        expected_packet_probe_idle = make_falcon_probe_idle_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=1001, pkt_len=0, seq_num=0x10+i, **eth_kwargs)            
+        task_done_idle_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+        expected_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+        expected_packet_probe_idle = make_falcon_probe_idle_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=1001, pkt_len=0, task_id=0x10+i, **eth_kwargs)            
         logger.info("Sending done_idle packet on port %d", ig_port)
         testutils.send_packet(self, ig_port, task_done_idle_packet)
         #testutils.verify_packets(self, expected_packet_probe_idle, [12, 13])
@@ -578,7 +578,7 @@ class TestFalconLeaf(BfRuntimeTest):
 
         logger.info("\n*** Spine 1 sends idle response ***")
         spine_src_1 = spine_port_mapping.keys()[0]
-        probe_resp_1 = make_falcon_probe_idle_response_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=spine_src_1, dst_id=dst_id, seq_num=0x10+i, q_len=spine_idle_qlen[0], **eth_kwargs)
+        probe_resp_1 = make_falcon_probe_idle_response_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=spine_src_1, dst_id=dst_id, task_id=0x10+i, q_len=spine_idle_qlen[0], **eth_kwargs)
         testutils.send_packet(self, ig_port, probe_resp_1)
         logger.info("\n*** Leaf should send another probe to random spine ***")
         poll_res = testutils.dp_poll(self)
@@ -600,7 +600,7 @@ class TestFalconLeaf(BfRuntimeTest):
 
         logger.info("\n*** Spine 2 sends idle response ***")
         spine_src_2 = spine_port_mapping.keys()[1]
-        probe_resp_2 = make_falcon_probe_idle_response_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=spine_src_2, dst_id=dst_id, seq_num=0x10+i, q_len=spine_idle_qlen[1], **eth_kwargs)
+        probe_resp_2 = make_falcon_probe_idle_response_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=spine_src_2, dst_id=dst_id, task_id=0x10+i, q_len=spine_idle_qlen[1], **eth_kwargs)
         testutils.send_packet(self, ig_port, probe_resp_2)
         logger.info("\n*** Leaf should send an idle signal to selected spine (one with min idle queue length)***")
         poll_res = testutils.dp_poll(self)
@@ -739,8 +739,8 @@ class TestFalconLeaf(BfRuntimeTest):
             src_id = random.randint(1, 255)
             dst_id = random.randint(1, 255)
 
-            new_task_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=random.randint(1, 255), pkt_len=0, seq_num=0x10+i, **eth_kwargs)
-            expected_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=initial_idle_list[idle_pointer_stack], pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+            new_task_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=random.randint(1, 255), pkt_len=0, task_id=0x10+i, **eth_kwargs)
+            expected_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=initial_idle_list[idle_pointer_stack], pkt_len=0, task_id=0x10+i, **eth_kwargs)
             
             logger.info("Sending task packet on port %d", ig_port)
             testutils.send_packet(self, ig_port, new_task_packet)
@@ -758,9 +758,9 @@ class TestFalconLeaf(BfRuntimeTest):
             dst_id = 100 # this will be identifier for client (receiving reply pkt)
             src_id = initial_idle_list[i]
             ig_port = wid_port_mapping[initial_idle_list[i]]
-            task_done_idle_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
-            expected_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, pkt_len=0, seq_num=0x10+i, **eth_kwargs)            
-            expected_packet_probe_idle = make_falcon_probe_idle_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, pkt_len=0, seq_num=0x10+i, **eth_kwargs)            
+            task_done_idle_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+            expected_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=True, pkt_len=0, task_id=0x10+i, **eth_kwargs)            
+            expected_packet_probe_idle = make_falcon_probe_idle_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, pkt_len=0, task_id=0x10+i, **eth_kwargs)            
             logger.info("Sending done_idle packet on port %d", ig_port)
             testutils.send_packet(self, ig_port, task_done_idle_packet)
             
@@ -906,9 +906,9 @@ class TestFalconLeaf(BfRuntimeTest):
             src_id = random.randint(1, 255)
             dst_id = random.randint(1, 255)
 
-            new_task_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=random.randint(1, 255), pkt_len=0, seq_num=0x10+i, **eth_kwargs)
-            expected_packet_0 = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=0, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
-            expected_packet_1 = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=1, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+            new_task_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=random.randint(1, 255), pkt_len=0, task_id=0x10+i, **eth_kwargs)
+            expected_packet_0 = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=0, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+            expected_packet_1 = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=1, pkt_len=0, task_id=0x10+i, **eth_kwargs)
             logger.info("Sending task packet on port %d", ig_port)
             testutils.send_packet(self, ig_port, new_task_packet)
             # Note: Can't expect the packet since random sampling happens inside the switch 
@@ -971,7 +971,7 @@ class TestFalconLeaf(BfRuntimeTest):
             dst_id = 100 # this will be identifier for client (receiving reply pkt)
             src_id = i # each worker sends one task done to check if states are updated correctly in the switch
             ig_port = 5
-            task_done_idle_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+            task_done_idle_packet = make_falcon_task_done_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, is_idle=False, q_len=i, pkt_len=0, task_id=0x10+i, **eth_kwargs)
             logger.info("Sending done packet (reply) on port %d", ig_port)
             testutils.send_packet(self, ig_port, task_done_idle_packet)
             
@@ -1258,7 +1258,7 @@ class TestFalconSpine(BfRuntimeTest):
                     client.DataTuple('$MULTICAST_NODE_L1_XID', int_arr_val=[0])])])
             
             ig_port = swports[random.randint(9, 15)] # port connected to spine
-            idle_remove_pkt = make_falcon_idle_remove_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=initial_idle_list[0], dst_id=spine_under_test_id, seq_num=0x10, **eth_kwargs)
+            idle_remove_pkt = make_falcon_idle_remove_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=initial_idle_list[0], dst_id=spine_under_test_id, task_id=0x10, **eth_kwargs)
             testutils.send_packet(self, ig_port, idle_remove_pkt)
             for i in range(len(broadcast_port_ids)):
                 poll_res = testutils.dp_poll(self)
@@ -1344,7 +1344,7 @@ class TestFalconSpine(BfRuntimeTest):
                     pipe_id,
                     idle_leaf_id)
             ig_port = swports[random.randint(9, 15)] # port connected to spine
-            idle_remove_pkt = make_falcon_idle_remove_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=initial_idle_list[idle_pointer_stack], dst_id=spine_under_test_id, seq_num=0x10+i, **eth_kwargs)
+            idle_remove_pkt = make_falcon_idle_remove_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=initial_idle_list[idle_pointer_stack], dst_id=spine_under_test_id, task_id=0x10+i, **eth_kwargs)
             testutils.send_packet(self, ig_port, idle_remove_pkt)
             expected_idle_count -= 1
             idle_pointer_stack -= 1
@@ -1442,15 +1442,15 @@ class TestFalconSpine(BfRuntimeTest):
                 src_id = random.randint(1, 255)
                 dst_id = random.randint(1, 255)
 
-                new_task_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=spine_under_test_id, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
-                expected_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=spine_under_test_id, dst_id=initial_idle_list[idle_pointer_stack], pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+                new_task_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=spine_under_test_id, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+                expected_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=spine_under_test_id, dst_id=initial_idle_list[idle_pointer_stack], pkt_len=0, task_id=0x10+i, **eth_kwargs)
                 
                 logger.info("Sending task packet on port %d", ig_port)
                 testutils.send_packet(self, ig_port, new_task_packet)
                 logger.info("Expecting task packet on port %d (IFACE-OUT)", eg_port)
                 testutils.verify_packets(self, expected_packet, [eg_port])
 
-            idle_remove_pkt = make_falcon_idle_remove_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=initial_idle_list[idle_pointer_stack], dst_id=spine_under_test_id, seq_num=0x10+i, **eth_kwargs)
+            idle_remove_pkt = make_falcon_idle_remove_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=initial_idle_list[idle_pointer_stack], dst_id=spine_under_test_id, task_id=0x10+i, **eth_kwargs)
             testutils.send_packet(self, ig_port, idle_remove_pkt)
             expected_idle_count -= 1
             idle_pointer_stack -= 1
@@ -1626,9 +1626,9 @@ class TestFalconSpine(BfRuntimeTest):
             src_id = random.randint(1, 255)
             dst_id = spine_under_test_id
 
-            new_task_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
-            expected_packet_0 = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=0, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
-            expected_packet_1 = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=1, pkt_len=0, seq_num=0x10+i, **eth_kwargs)
+            new_task_packet = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=dst_id, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+            expected_packet_0 = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=0, pkt_len=0, task_id=0x10+i, **eth_kwargs)
+            expected_packet_1 = make_falcon_task_pkt(dst_ip=SAMPLE_IP_DST, cluster_id=TEST_VCLUSTER_ID, local_cluster_id=TEST_VCLUSTER_ID, src_id=src_id, dst_id=1, pkt_len=0, task_id=0x10+i, **eth_kwargs)
             logger.info("Sending task packet on port %d", ig_port)
             testutils.send_packet(self, ig_port, new_task_packet)
             poll_res = testutils.dp_poll(self)
